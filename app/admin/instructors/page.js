@@ -43,9 +43,9 @@ export default function InstructorsPage() {
         {instructors.map(inst => (
           <div key={inst.id} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col items-center text-center">
             <div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl text-white font-bold mb-4" style={{ backgroundColor: inst.color || '#3B82F6' }}>
-              {inst.first_name[0]}{inst.last_name?.[0] || ''}
+              {inst.first_name?.[0] || 'P'}{inst.last_name?.[0] || ''}
             </div>
-            <h3 className="text-xl font-bold text-gray-900">{inst.first_name} {inst.last_name}</h3>
+            <h3 className="text-xl font-bold text-gray-900">{inst.first_name || 'Professeur'} {inst.last_name || ''}</h3>
             
             <div className="w-full mt-6 space-y-3">
               <div className="flex items-center text-gray-600 text-sm bg-gray-50 p-2 rounded-lg">
