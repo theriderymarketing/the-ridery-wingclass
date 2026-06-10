@@ -32,7 +32,8 @@ export default function LoginPage() {
         .eq('id', authData.user.id)
         .single();
 
-      if (profileError && profileError.code !== 'PGRST116') {
+      // Ignorer si pas de ligne (PGRST116) ou table inexistante (PGRST205)
+      if (profileError && profileError.code !== 'PGRST116' && profileError.code !== 'PGRST205') {
         throw profileError;
       }
 
