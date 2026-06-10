@@ -9,6 +9,15 @@ import { useStore } from '@/lib/store';
 export default function AdminCalendar() {
   const { fetchData, isLoaded, sessions, courseTypes, instructors, sessionParticipants } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [newSession, setNewSession] = useState({
+    instructor_id: '',
+    course_type_id: '',
+    date: format(new Date(), 'yyyy-MM-dd'),
+    start_time: '10:00',
+    end_time: '12:00',
+    spot_location: 'Spot principal'
+  });
 
   useEffect(() => {
     if (!isLoaded) {
@@ -49,6 +58,26 @@ export default function AdminCalendar() {
   const showCurrentTimeLine = currentHour >= 8 && currentHour <= 18;
   const currentTop = (currentHour - 8) * 80;
 
+  const handleCreateSession = async (e) => {
+    e.preventDefault();
+    try {
+      const start = new Date(`${newSession.date}T${newSession.start_time}`);
+      const end = new Date(`${newSession.date}T${newSession.end_time}`);
+      
+      await useStore.getState().addSession({
+        instructor_id: newSession.instructor_id,
+        course_type_id: newSession.course_type_id,
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        spot_location: newSession.spot_location
+      });
+      setIsSessionModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la création");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative">
       <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/60 px-8 py-6 sticky top-0 z-30 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
@@ -72,7 +101,7 @@ export default function AdminCalendar() {
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
-          <button onClick={() => alert("Le formulaire d'ajout de créneau arrive très bientôt ! Tu pourras y ajouter le prof, la date et l'heure.")} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5">
+          <button onClick={() => setIsSessionModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5">
             <Plus className="w-5 h-5" />
             Nouveau Créneau
           </button>
@@ -184,6 +213,109 @@ export default function AdminCalendar() {
           </div>
         </div>
       </div>
+
+      {isSessionModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Nouveau créneau</h2>
+            <form onSubmit={handleCreateSession} className="space-y-4">
+              
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Type de cours</label>
+                <select 
+                  required
+                  value={newSession.course_type_id}
+                  onChange={(e) => setNewSession({...newSession, course_type_id: e.target.value})}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                >
+                  <option value="">Sélectionner un type</option>
+                  {courseTypes.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Professeur</label>
+                <select 
+                  required
+                  value={newSession.instructor_id}
+                  onChange={(e) => setNewSession({...newSession, instructor_id: e.target.value})}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                >
+                  <option value="">Sélectionner un professeur</option>
+                  {instructors.map(i => (
+                    <option key={i.id} value={i.id}>{i.first_name} {i.last_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
+                  <input 
+                    type="date" 
+                    required
+                    value={newSession.date}
+                    onChange={(e) => setNewSession({...newSession, date: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Spot</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newSession.spot_location}
+                    onChange={(e) => setNewSession({...newSession, spot_location: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Heure de début</label>
+                  <input 
+                    type="time" 
+                    required
+                    value={newSession.start_time}
+                    onChange={(e) => setNewSession({...newSession, start_time: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Heure de fin</label>
+                  <input 
+                    type="time" 
+                    required
+                    value={newSession.end_time}
+                    onChange={(e) => setNewSession({...newSession, end_time: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 mt-6 border-t border-gray-100">
+                <button 
+                  type="button" 
+                  onClick={() => setIsSessionModalOpen(false)}
+                  className="flex-1 bg-white border border-gray-200 text-gray-700 font-bold py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 bg-orange-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-orange-600 transition-colors"
+                >
+                  Créer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
