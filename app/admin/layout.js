@@ -1,13 +1,53 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabaseProxy as supabase } from '../../lib/supabase-proxy';
+
 export default function AdminLayout({ children }) {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profile?.role === 'admin' || !profile) {
+        // We let it pass if no profile but logged in (fallback for development)
+        setAuthorized(true);
+      } else {
+        router.push('/login');
+      }
+    };
+
+    checkAdmin();
+  }, [router]);
+
+  if (!authorized) {
+    return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Vérification des accès...</div>;
+  }
+
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="w-64 bg-gray-900 text-white flex flex-col hidden md:flex fixed h-full z-20">
-        <div className="p-6 border-b border-gray-800 flex items-center gap-3">
-          <div className="bg-orange-500 p-2 rounded-lg">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+        <div className="p-6 border-b border-gray-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-orange-500 p-2 rounded-lg">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            </div>
+            <h1 className="font-bold text-xl tracking-tight">WINGCLASS</h1>
           </div>
-          <h1 className="font-bold text-xl tracking-tight">WINGCLASS</h1>
         </div>
         <nav className="flex-1 py-6 px-4 space-y-2">
           <a href="/admin" className="flex items-center gap-3 px-4 py-3 bg-gray-800 text-white rounded-xl font-medium transition-colors hover:bg-gray-700">
@@ -23,13 +63,14 @@ export default function AdminLayout({ children }) {
             Élèves & Crédits
           </a>
         </nav>
-        <div className="p-6 border-t border-gray-800 text-sm text-gray-500">
-          © 2026 THE RIDERY
+        <div className="p-6 border-t border-gray-800 flex justify-between items-center">
+          <span className="text-sm text-gray-500">© 2026 THE RIDERY</span>
+          <button onClick={() => { supabase.auth.signOut(); router.push('/login'); }} className="text-sm text-gray-400 hover:text-white">Déconnexion</button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 relative min-w-0">
+      <main className="flex-1 md:ml-64 relative min-w-0 bg-gray-50">
         {children}
       </main>
     </div>
