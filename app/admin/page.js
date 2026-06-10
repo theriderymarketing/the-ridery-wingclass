@@ -250,27 +250,15 @@ export default function AdminCalendar() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
-                  <input 
-                    type="date" 
-                    required
-                    value={newSession.date}
-                    onChange={(e) => setNewSession({...newSession, date: e.target.value})}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Spot</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newSession.spot_location}
-                    onChange={(e) => setNewSession({...newSession, spot_location: e.target.value})}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
+                <input 
+                  type="date" 
+                  required
+                  value={newSession.date}
+                  onChange={(e) => setNewSession({...newSession, date: e.target.value})}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
