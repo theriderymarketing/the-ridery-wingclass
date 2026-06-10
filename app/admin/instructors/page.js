@@ -20,7 +20,7 @@ export default function InstructorsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Équipe Pédagogique</h1>
           <p className="text-gray-500 mt-1">Gérez vos professeurs et moniteurs</p>
         </div>
-        <button className="bg-gray-900 text-white px-4 py-2 rounded-xl font-medium">Ajouter un professeur</button>
+        <button onClick={() => alert("Formulaire d'ajout de professeur en cours de développement")} className="bg-gray-900 text-white px-4 py-2 rounded-xl font-medium">Ajouter un professeur</button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

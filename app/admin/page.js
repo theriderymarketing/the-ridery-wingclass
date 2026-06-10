@@ -59,7 +59,7 @@ export default function AdminCalendar() {
         <div className="flex items-center gap-4">
           <div className="flex items-center bg-gray-100/80 backdrop-blur-sm rounded-xl p-1 border border-gray-200/50 shadow-inner">
             <button className="px-5 py-2 text-sm font-bold rounded-lg bg-white shadow-sm text-gray-900 transition-all">Semaine</button>
-            <button className="px-5 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-900 transition-all">Jour</button>
+            <button onClick={() => alert("Vue jour en cours de développement")} className="px-5 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-900 transition-all">Jour</button>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setCurrentDate(subWeeks(currentDate, 1))} className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 text-gray-600 transition-all shadow-sm">
@@ -72,7 +72,7 @@ export default function AdminCalendar() {
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
-          <button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5">
+          <button onClick={() => alert("Le formulaire d'ajout de créneau arrive très bientôt ! Tu pourras y ajouter le prof, la date et l'heure.")} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5">
             <Plus className="w-5 h-5" />
             Nouveau Créneau
           </button>
