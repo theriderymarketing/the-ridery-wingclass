@@ -74,10 +74,6 @@ export default function AdminLayout({ children }) {
           </nav>
         </div>
         
-        <div className="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50">
-          <span className="text-xs text-gray-500 font-medium">WINGCLASS v2.0</span>
-          <button onClick={() => { supabase.auth.signOut(); router.push('/login'); }} className="text-xs font-bold text-red-600 hover:text-red-700 transition-colors uppercase tracking-wider px-3 py-1.5 rounded-md hover:bg-red-50">Déconnexion</button>
-        </div>
       </aside>
 
       {/* Main Content */}
