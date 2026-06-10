@@ -54,61 +54,52 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F3F4F6] flex flex-col items-center justify-center p-4 font-sans text-gray-900 relative overflow-hidden">
-      
-      <div className="bg-white p-10 rounded-[20px] border border-gray-200/60 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.08)] w-full max-w-md relative z-10 transition-all">
-        <div className="text-center mb-10">
-          <div className="flex items-center justify-center mb-6">
-            <img src="/logo.png" alt="The Ridery Logo" className="h-12 object-contain" />
-          </div>
-          <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">Espace Wingclass</h1>
-          <p className="text-gray-500 mt-2 font-medium">Connectez-vous à votre tableau de bord</p>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6', fontFamily: 'sans-serif' }}>
+      <div style={{ width: '100%', maxWidth: '400px', padding: '40px', backgroundColor: '#FFFFFF', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <img src="/logo.png" alt="THE RIDERY" style={{ maxWidth: '200px', marginBottom: '32px', height: 'auto' }} />
         </div>
-
+        <h1 style={{ fontSize: '24px', marginBottom: '24px', fontWeight: 'bold', color: '#111827' }}>Accès sécurisé</h1>
+        
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm font-medium text-center flex items-center justify-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          <div style={{ color: '#ef4444', marginBottom: '16px', fontSize: '14px' }}>
             {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-gray-700 ml-1">Adresse Email</label>
+        <form onSubmit={handleLogin}>
+          <div style={{ textAlign: 'left', marginBottom: '16px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>Identifiant</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-[#F9FAFB] border border-gray-200 rounded-xl px-5 py-3.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium"
-              placeholder="votre@email.com"
+              style={{ width: '100%', padding: '10px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
+              placeholder="Saisissez votre identifiant"
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-sm font-semibold text-gray-700 ml-1">Mot de passe</label>
+          <div style={{ textAlign: 'left', marginBottom: '24px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>Mot de passe</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-[#F9FAFB] border border-gray-200 rounded-xl px-5 py-3.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-orange-500/10 focus:border-orange-500 focus:bg-white transition-all font-medium"
-              placeholder="••••••••"
+              style={{ width: '100%', padding: '10px 12px', border: '1px solid #D1D5DB', borderRadius: '6px', fontSize: '14px', boxSizing: 'border-box' }}
+              placeholder="••••••••••••"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-500 hover:to-orange-500 text-white font-bold tracking-wide py-3.5 px-4 rounded-xl transition-all shadow-[0_4px_14px_0_rgba(249,115,22,0.39)] hover:shadow-[0_6px_20px_rgba(249,115,22,0.23)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed mt-2 border-none"
+            style={{ width: '100%', padding: '10px', backgroundColor: '#F97316', color: 'white', border: 'none', borderRadius: '6px', fontSize: '14px', fontWeight: '500', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}
           >
-            {loading ? 'Authentification...' : 'SE CONNECTER'}
+            {loading ? 'Vérification...' : 'Se connecter'}
           </button>
         </form>
-      </div>
-      
-      <div className="mt-8 text-gray-400 text-xs font-bold tracking-widest uppercase">
-        © 2026 THE RIDERY
       </div>
     </div>
   );
