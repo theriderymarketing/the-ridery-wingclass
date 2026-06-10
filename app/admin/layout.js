@@ -38,7 +38,6 @@ export default function AdminLayout({ children }) {
   }
 
   return (
-  return (
     <div className="flex min-h-screen bg-[#F3F4F6]">
       {/* Sidebar */}
       <aside className="w-64 bg-white text-gray-900 flex flex-col hidden md:flex fixed h-full z-20 border-r border-gray-200">
