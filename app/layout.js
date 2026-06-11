@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata = {
-  title: 'THE RIDERY WINGCLASS',
+  title: 'THE RIDERY - Administration',
   description: 'Plateforme de réservation et de suivi des cours The Ridery',
 };
 

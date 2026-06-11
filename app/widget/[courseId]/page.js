@@ -69,7 +69,7 @@ export default function WidgetPage({ params }) {
 
   const courseInfo = selectedSession 
     ? courseTypes.find(c => c.id === selectedSession.course_type_id) 
-    : { name: 'Cours de Wingfoil - The Ridery', duration_minutes: 120 };
+    : { name: 'Cours - The Ridery', duration_minutes: 120 };
 
   return (
     <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row relative max-h-[90vh]">
@@ -86,7 +86,7 @@ export default function WidgetPage({ params }) {
           <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mb-4">
              <img src="https://theridery.com/cdn/shop/files/favicon_32x32.png" alt="Logo" className="w-6 h-6" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{courseInfo?.name || 'Cours de Wingfoil avec The Ridery'}</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">{courseInfo?.name || 'Cours avec The Ridery'}</h2>
           <p className="text-gray-500 text-sm mb-6">Les cours durent {courseInfo?.duration_minutes / 60}h, pense à bien arriver 20 minutes avant pour te préparer et pas perdre une seule seconde sur l'eau !</p>
           
           {selectedSession && (
@@ -213,7 +213,7 @@ export default function WidgetPage({ params }) {
                 <input required type="tel" placeholder="Entrez votre numéro" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Niveau de Wing ? *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Niveau ? *</label>
                 <select required value={formData.niveau} onChange={e => setFormData({...formData, niveau: e.target.value})} className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none bg-white">
                   <option value="">Sélectionner</option>
                   <option value="debutant">Jamais pratiqué</option>

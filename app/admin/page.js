@@ -7,16 +7,29 @@ import { fr } from 'date-fns/locale';
 import { useStore } from '@/lib/store';
 
 export default function AdminCalendar() {
-  const { fetchData, isLoaded, sessions, courseTypes, instructors, sessionParticipants } = useStore();
+  const { fetchData, isLoaded, sessions, courseTypes, instructors, sessionParticipants, customers } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [showEmptySessions, setShowEmptySessions] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState(null);
   const [newSession, setNewSession] = useState({
     instructor_id: '',
     course_type_id: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     start_time: '10:00',
     end_time: '12:00',
-    spot_location: 'Spot principal'
+  });
+  const [showStudentForm, setShowStudentForm] = useState(false);
+  const [newStudent, setNewStudent] = useState({
+    first_name: '',
+    last_name: '',
+    birth_date: '',
+    address: '',
+    email: '',
+    phone: '',
+    has_license: false,
+    license_paid: false,
+    license_type: 'journée'
   });
 
   useEffect(() => {
@@ -41,6 +54,8 @@ export default function AdminCalendar() {
     
     return {
       id: s.id,
+      instructor_id: s.instructor_id,
+      course_type_id: s.course_type_id,
       instructor_name: `${instructor.first_name || 'Prof'} ${instructor.last_name || ''}`,
       course_name: course.name || 'Cours',
       start_time: new Date(s.start_time),
@@ -63,19 +78,86 @@ export default function AdminCalendar() {
     try {
       const start = new Date(`${newSession.date}T${newSession.start_time}`);
       const end = new Date(`${newSession.date}T${newSession.end_time}`);
-      
-      await useStore.getState().addSession({
-        instructor_id: newSession.instructor_id,
-        course_type_id: newSession.course_type_id,
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
-        spot_location: newSession.spot_location
-      });
-      setIsSessionModalOpen(false);
+
+      let sessionId = editingSessionId;
+
+      if (editingSessionId) {
+        await useStore.getState().updateSession({
+          id: editingSessionId,
+          instructor_id: newSession.instructor_id,
+          course_type_id: newSession.course_type_id,
+          start_time: start.toISOString(),
+          end_time: end.toISOString()
+        });
+      } else {
+        const created = await useStore.getState().addSession({
+          instructor_id: newSession.instructor_id,
+          course_type_id: newSession.course_type_id,
+          start_time: start.toISOString(),
+          end_time: end.toISOString()
+        });
+        if (created) sessionId = created.id;
+      }
+
+      // Add student if the form was filled out
+      if (showStudentForm && newStudent.first_name && newStudent.last_name && sessionId) {
+        const studentToCreate = { ...newStudent };
+        if (!studentToCreate.has_license) {
+          studentToCreate.license_type = null;
+        } else {
+          studentToCreate.license_paid = null;
+        }
+
+        const createdStudent = await useStore.getState().addCustomer(studentToCreate);
+        if (createdStudent && createdStudent.id) {
+          await useStore.getState().enrollStudent(sessionId, createdStudent.id);
+        }
+      }
+
+      closeSessionModal();
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de la création");
+      alert("Erreur lors de la sauvegarde");
     }
+  };
+
+  const openEditSessionModal = (session) => {
+    setNewSession({
+      instructor_id: session.instructor_id,
+      course_type_id: session.course_type_id,
+      date: new Date(session.start_time).toISOString().split('T')[0],
+      start_time: new Date(session.start_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+      end_time: new Date(session.end_time).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    });
+    setEditingSessionId(session.id);
+    setShowStudentForm(false);
+    setNewStudent({
+      first_name: '', last_name: '', birth_date: '', address: '', email: '', phone: '', has_license: false, license_paid: false, license_type: 'journée'
+    });
+    setIsSessionModalOpen(true);
+  };
+
+  const handleDeleteSession = async () => {
+    if (confirm('Voulez-vous vraiment supprimer ce créneau ?')) {
+      await useStore.getState().deleteSession(editingSessionId);
+      closeSessionModal();
+    }
+  };
+
+  const closeSessionModal = () => {
+    setIsSessionModalOpen(false);
+    setEditingSessionId(null);
+    setShowStudentForm(false);
+    setNewStudent({
+      first_name: '', last_name: '', birth_date: '', address: '', email: '', phone: '', has_license: false, license_paid: false, license_type: 'journée'
+    });
+    setNewSession({
+      instructor_id: '',
+      course_type_id: '',
+      date: new Date().toISOString().split('T')[0],
+      start_time: '09:00',
+      end_time: '11:00'
+    });
   };
 
   return (
@@ -86,10 +168,15 @@ export default function AdminCalendar() {
           <p className="text-gray-500 mt-1 font-medium">Gérez vos professeurs et vos créneaux en temps réel</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center bg-gray-100/80 backdrop-blur-sm rounded-xl p-1 border border-gray-200/50 shadow-inner">
-            <button className="px-5 py-2 text-sm font-bold rounded-lg bg-white shadow-sm text-gray-900 transition-all">Semaine</button>
-            <button onClick={() => alert("Vue jour en cours de développement")} className="px-5 py-2 text-sm font-medium rounded-lg text-gray-500 hover:text-gray-900 transition-all">Jour</button>
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors">
+            <input 
+              type="checkbox" 
+              className="rounded text-orange-500 focus:ring-orange-500 w-4 h-4 cursor-pointer"
+              checked={showEmptySessions}
+              onChange={(e) => setShowEmptySessions(e.target.checked)}
+            />
+            Afficher les créneaux vides
+          </label>
           <div className="flex items-center gap-2">
             <button onClick={() => setCurrentDate(subWeeks(currentDate, 1))} className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 text-gray-600 transition-all shadow-sm">
               <ChevronLeft className="w-5 h-5" />
@@ -159,7 +246,7 @@ export default function AdminCalendar() {
               </div>
             ))}
 
-            {calendarSessions.map((session) => {
+            {calendarSessions.filter(session => showEmptySessions || session.enrolled > 0).map((session) => {
               const dayDiff = Math.floor((session.start_time - weekStart) / (1000 * 60 * 60 * 24));
               if (dayDiff < 0 || dayDiff > 6) return null; 
 
@@ -169,14 +256,29 @@ export default function AdminCalendar() {
               
               const top = (startHour - 8) * 80;
               const height = (endHour - startHour) * 80;
-              const left = `calc((100% / 8) + ((100% * 7 / 8) / 7) * ${dayIndex})`;
-              const width = `calc((100% * 7 / 8) / 7)`;
-
               const isFull = session.enrolled >= session.capacity;
+
+              // Gestion des chevauchements (en ne comptant que les visibles)
+              const visibleSessions = calendarSessions.filter(s => showEmptySessions || s.enrolled > 0);
+              const sameDaySessions = visibleSessions.filter(s => 
+                s.start_time.getDay() === session.start_time.getDay() &&
+                s.start_time.getFullYear() === session.start_time.getFullYear() &&
+                s.start_time.getMonth() === session.start_time.getMonth()
+              );
+              const overlapping = sameDaySessions.filter(s => 
+                (s.start_time < session.end_time && s.end_time > session.start_time)
+              ).sort((a, b) => a.start_time - b.start_time);
+              
+              const colIndex = overlapping.findIndex(s => s.id === session.id);
+              const numCols = Math.max(1, overlapping.length);
+
+              const left = `calc((100% / 8) + ((100% * 7 / 8) / 7) * ${dayIndex} + (((100% * 7 / 8) / 7) / ${numCols}) * ${colIndex})`;
+              const width = `calc(((100% * 7 / 8) / 7) / ${numCols})`;
 
               return (
                 <div 
                   key={session.id} 
+                  onClick={() => openEditSessionModal(session)}
                   className="absolute p-1 transition-all duration-300 hover:scale-[1.03] hover:z-20 cursor-pointer group"
                   style={{ top: `${top}px`, height: `${height}px`, left, width }}
                 >
@@ -202,8 +304,6 @@ export default function AdminCalendar() {
                         {session.instructor_name}
                       </div>
                       <div className="flex items-center text-[11px] text-gray-500 font-medium">
-                        <MapPin className="w-3.5 h-3.5 mr-1.5 opacity-40" />
-                        {session.spot_location}
                       </div>
                     </div>
                   </div>
@@ -217,7 +317,7 @@ export default function AdminCalendar() {
       {isSessionModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Nouveau créneau</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">{editingSessionId ? 'Modifier le créneau' : 'Nouveau créneau'}</h2>
             <form onSubmit={handleCreateSession} className="space-y-4">
               
               <div>
@@ -250,20 +350,19 @@ export default function AdminCalendar() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
-                <input 
-                  type="date" 
-                  required
-                  value={newSession.date}
-                  onChange={(e) => setNewSession({...newSession, date: e.target.value})}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Heure de début</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Date</label>
+                  <input 
+                    type="date" 
+                    required
+                    value={newSession.date}
+                    onChange={(e) => setNewSession({...newSession, date: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Début</label>
                   <input 
                     type="time" 
                     required
@@ -273,7 +372,7 @@ export default function AdminCalendar() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Heure de fin</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Fin</label>
                   <input 
                     type="time" 
                     required
@@ -284,26 +383,132 @@ export default function AdminCalendar() {
                 </div>
               </div>
 
+              <div className="pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-gray-900">Infos Client (Optionnel)</h3>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowStudentForm(!showStudentForm)}
+                    className="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-full hover:bg-orange-100 transition-colors"
+                  >
+                    {showStudentForm ? 'Masquer' : '+ Ajouter un élève'}
+                  </button>
+                </div>
+
+                {showStudentForm && (
+                  <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200 overflow-y-auto max-h-[40vh]">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Prénom *</label>
+                        <input type="text" required={showStudentForm} value={newStudent.first_name} onChange={(e) => setNewStudent({...newStudent, first_name: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Nom *</label>
+                        <input type="text" required={showStudentForm} value={newStudent.last_name} onChange={(e) => setNewStudent({...newStudent, last_name: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Date de naissance</label>
+                        <input type="date" value={newStudent.birth_date} onChange={(e) => setNewStudent({...newStudent, birth_date: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Téléphone</label>
+                        <input type="tel" value={newStudent.phone} onChange={(e) => setNewStudent({...newStudent, phone: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Email</label>
+                      <input type="email" value={newStudent.email} onChange={(e) => setNewStudent({...newStudent, email: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Adresse postale</label>
+                      <input type="text" value={newStudent.address} onChange={(e) => setNewStudent({...newStudent, address: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-200">
+                      <label className="flex items-center space-x-2 cursor-pointer mb-3">
+                        <input type="checkbox" checked={newStudent.has_license} onChange={(e) => setNewStudent({...newStudent, has_license: e.target.checked})} className="rounded text-orange-500 focus:ring-orange-500" />
+                        <span className="text-sm font-semibold text-gray-700">A déjà une licence FFV</span>
+                      </label>
+
+                      {!newStudent.has_license && (
+                        <div className="pl-6 space-y-3">
+                          <label className="flex items-center space-x-2 cursor-pointer">
+                            <input type="checkbox" checked={newStudent.license_paid} onChange={(e) => setNewStudent({...newStudent, license_paid: e.target.checked})} className="rounded text-orange-500 focus:ring-orange-500" />
+                            <span className="text-xs text-gray-600 font-medium">Licence payée ?</span>
+                          </label>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-700 mb-1">Type de licence</label>
+                            <select value={newStudent.license_type} onChange={(e) => setNewStudent({...newStudent, license_type: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
+                              <option value="journée">Journée</option>
+                              <option value="annuel">Annuel</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-3 pt-4 mt-6 border-t border-gray-100">
+                {editingSessionId && (
+                  <button 
+                    type="button" 
+                    onClick={handleDeleteSession}
+                    className="bg-red-50 text-red-600 font-bold py-3 px-4 rounded-xl hover:bg-red-100 transition-colors"
+                  >
+                    Supprimer
+                  </button>
+                )}
                 <button 
                   type="button" 
-                  onClick={() => setIsSessionModalOpen(false)}
+                  onClick={closeSessionModal}
                   className="flex-1 bg-white border border-gray-200 text-gray-700 font-bold py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors"
                 >
                   Annuler
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 bg-orange-500 text-white font-bold py-3 px-4 rounded-xl hover:bg-orange-600 transition-colors"
+                  className="flex-1 bg-gray-900 text-white font-bold py-3 px-4 rounded-xl hover:bg-gray-800 transition-colors"
                 >
-                  Créer
+                  {editingSessionId ? 'Mettre à jour' : 'Créer'}
                 </button>
               </div>
             </form>
+
+            {editingSessionId && (
+              <div className="mt-8 border-t border-gray-100 pt-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Élèves inscrits</h3>
+                {sessionParticipants.filter(p => p.session_id === editingSessionId).length === 0 ? (
+                  <div className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl text-center">
+                    Aucun élève inscrit pour le moment.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {sessionParticipants.filter(p => p.session_id === editingSessionId).map(p => {
+                      const customer = customers.find(c => c.id === p.customer_id);
+                      if (!customer) return null;
+                      return (
+                        <div key={p.id} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex justify-between items-center">
+                          <div>
+                            <div className="font-bold text-gray-900 text-sm">{customer.first_name} {customer.last_name}</div>
+                            <div className="text-xs text-gray-500">{customer.email} • {customer.phone || 'Pas de tel'}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
-
     </div>
   );
 }

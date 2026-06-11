@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { verifyAdmin } from '../verify-admin';
 
 // Initialise Supabase avec les droits Admin complets pour gérer les comptes Auth
 const getSupabaseAdmin = () => {
@@ -12,6 +13,9 @@ const getSupabaseAdmin = () => {
 
 export async function POST(req) {
   try {
+    const auth = await verifyAdmin(req);
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const supabaseAdmin = getSupabaseAdmin();
     const { email, password, role, firstName, lastName } = await req.json();
 
@@ -53,6 +57,9 @@ export async function POST(req) {
 
 export async function GET(req) {
   try {
+    const auth = await verifyAdmin(req);
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const supabaseAdmin = getSupabaseAdmin();
     const { data: profiles, error } = await supabaseAdmin
       .from('profiles')

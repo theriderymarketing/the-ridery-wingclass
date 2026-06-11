@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase-admin';
 
-export async function GET() {
+import { verifyAdmin } from '../verify-admin';
+
+export async function GET(request) {
   try {
+    const auth = await verifyAdmin(request);
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const [instRes, courseRes, sessRes, credRes, partRes, custRes] = await Promise.all([
       supabaseAdmin.from('instructors').select('*'),
       supabaseAdmin.from('course_types').select('*'),

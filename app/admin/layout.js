@@ -7,37 +7,6 @@ import { supabaseProxy as supabase } from '../../lib/supabase-proxy';
 
 export default function AdminLayout({ children }) {
   const router = useRouter();
-  const [authorized, setAuthorized] = useState(false);
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-        return;
-      }
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profile?.role === 'admin' || !profile) {
-        // We let it pass if no profile but logged in (fallback for development)
-        setAuthorized(true);
-      } else {
-        router.push('/login');
-      }
-    };
-
-    checkAdmin();
-  }, [router]);
-
-  if (!authorized) {
-    return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Vérification des accès...</div>;
-  }
-
   return (
     <div className="flex min-h-screen bg-[#F3F4F6]">
       {/* Sidebar */}
@@ -60,6 +29,10 @@ export default function AdminLayout({ children }) {
             <Link href="/admin/students" className="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg font-medium transition-all group">
               <svg className="w-5 h-5 group-hover:text-gray-900 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
               Élèves & Crédits
+            </Link>
+            <Link href="/admin/promocodes" className="flex items-center gap-3 px-4 py-3 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-lg font-medium transition-all group">
+              <svg className="w-5 h-5 group-hover:text-gray-900 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+              Codes Promo
             </Link>
           </nav>
         </div>
