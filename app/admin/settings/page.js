@@ -1,438 +1,389 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Plus, Mail, Key, User, Trash2, Clock, CalendarOff, Save, X } from 'lucide-react';
+import { Shield, Plus, Mail, Key, User, Trash2, CalendarOff, Save, X, Edit2, List, Settings } from 'lucide-react';
 import { supabaseProxy as supabase } from '../../../lib/supabase-proxy';
-
-const DAYS_OF_WEEK = [
-  { id: 'monday', label: 'Lundi' },
-  { id: 'tuesday', label: 'Mardi' },
-  { id: 'wednesday', label: 'Mercredi' },
-  { id: 'thursday', label: 'Jeudi' },
-  { id: 'friday', label: 'Vendredi' },
-  { id: 'saturday', label: 'Samedi' },
-  { id: 'sunday', label: 'Dimanche' },
-];
+import { useStore } from '../../../lib/store';
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('access');
+  const { courseTypes, addCourseType, updateCourseType, deleteCourseType, settings, updateSettings, fetchData } = useStore();
+  const [activeTab, setActiveTab] = useState('courses');
   
-  // === ACCESS TAB STATE ===
-  const [users, setUsers] = useState([]);
+  // Auth state
+  const [usersByRole, setUsersByRole] = useState({ admin: [], instructor: [], partenaire: [] });
   const [loading, setLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState({ email: '', password: '', role: 'instructor', firstName: '', lastName: '' });
+  const [inviteEmails, setInviteEmails] = useState({ admin: '', instructor: '', partenaire: '' });
+  const [inviting, setInviting] = useState({ admin: false, instructor: false, partenaire: false });
 
-  // === SCHEDULE TAB STATE ===
-  const [schedule, setSchedule] = useState(
-    DAYS_OF_WEEK.map(day => ({
-      ...day,
-      isOpen: !['sunday'].includes(day.id),
-      openTime: '09:00',
-      closeTime: '18:00',
-    }))
-  );
-  const [closedDates, setClosedDates] = useState([
-    { id: 1, date: '2026-07-14', reason: 'Fête Nationale' },
-    { id: 2, date: '2026-08-15', reason: 'Assomption' },
-    { id: 3, date: '2026-12-25', reason: 'Noël' },
-  ]);
-  const [newClosedDate, setNewClosedDate] = useState({ date: '', reason: '' });
-  const [showAddClosure, setShowAddClosure] = useState(false);
-  const [savingSchedule, setSavingSchedule] = useState(false);
+  // Course Types state
+  const [showCourseModal, setShowCourseModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [courseForm, setCourseForm] = useState({ name: '', duration_minutes: 120, capacity: 4, color: '#10B981' });
+
+  // Exceptions state
+  const [exceptions, setExceptions] = useState([]);
+  const [showExceptionModal, setShowExceptionModal] = useState(false);
+  const [exceptionForm, setExceptionForm] = useState({ date: '', course_type_id: 'all', reason: '', time_type: 'full_day', start_time: '08:00', end_time: '12:00' });
 
   useEffect(() => {
-    fetchUsers();
+    fetchAdmins();
+    if (!courseTypes.length) fetchData();
   }, []);
 
-  const fetchUsers = async () => {
-    try {
-      const res = await fetch('/api/admin/users');
-      const data = await res.json();
-      if (Array.isArray(data)) setUsers(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (settings && settings.closedDates) {
+      setExceptions(settings.closedDates);
     }
+  }, [settings]);
+
+  const fetchAdmins = async () => {
+    const { data } = await supabase.from('profiles').select('*');
+    const all = Array.isArray(data) ? data : [];
+    setUsersByRole({
+      admin: all.filter(u => !u.role || u.role === 'admin'),
+      instructor: all.filter(u => u.role === 'instructor'),
+      partenaire: all.filter(u => u.role === 'partenaire'),
+    });
+    setLoading(false);
   };
 
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    setIsCreating(true);
+  const handleInvite = async (role) => {
+    const email = inviteEmails[role];
+    if (!email) return;
+    setInviting(prev => ({ ...prev, [role]: true }));
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/admin/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ email, role })
       });
-      const data = await res.json();
-      
-      if (data.error) {
-        alert("Erreur: " + data.error);
-      } else {
-        alert("Compte créé avec succès !");
-        setFormData({ email: '', password: '', role: 'instructor', firstName: '', lastName: '' });
-        fetchUsers();
-      }
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setInviteEmails(prev => ({ ...prev, [role]: '' }));
+      await fetchAdmins();
+      alert(`Invitation envoyée à ${email}`);
     } catch (err) {
-      alert("Erreur serveur.");
+      alert(`Erreur : ${err.message}`);
     } finally {
-      setIsCreating(false);
+      setInviting(prev => ({ ...prev, [role]: false }));
     }
   };
 
-  // Schedule handlers
-  const toggleDay = (dayId) => {
-    setSchedule(prev => prev.map(d => d.id === dayId ? { ...d, isOpen: !d.isOpen } : d));
+  const saveCourse = async () => {
+    if (editingCourse) {
+      await updateCourseType({ ...courseForm, id: editingCourse.id });
+    } else {
+      await addCourseType(courseForm);
+    }
+    setShowCourseModal(false);
   };
 
-  const updateTime = (dayId, field, value) => {
-    setSchedule(prev => prev.map(d => d.id === dayId ? { ...d, [field]: value } : d));
+  const saveException = async () => {
+    const newExceptions = [...exceptions, exceptionForm];
+    await updateSettings({ ...settings, closedDates: newExceptions });
+    setShowExceptionModal(false);
   };
 
-  const addClosedDate = () => {
-    if (!newClosedDate.date) return;
-    setClosedDates(prev => [...prev, { id: Date.now(), ...newClosedDate }]);
-    setNewClosedDate({ date: '', reason: '' });
-    setShowAddClosure(false);
+  const deleteException = async (index) => {
+    const newExceptions = exceptions.filter((_, i) => i !== index);
+    await updateSettings({ ...settings, closedDates: newExceptions });
   };
-
-  const removeClosedDate = (id) => {
-    setClosedDates(prev => prev.filter(d => d.id !== id));
-  };
-
-  const handleSaveSchedule = async () => {
-    setSavingSchedule(true);
-    // TODO: Save to Supabase when table is created
-    setTimeout(() => {
-      setSavingSchedule(false);
-      alert('Horaires sauvegardés avec succès !');
-    }, 800);
-  };
-
-  const tabs = [
-    { id: 'access', label: 'Accès & Comptes', icon: Shield },
-    { id: 'schedule', label: 'Horaires & Fermetures', icon: Clock },
-  ];
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-8 max-w-5xl mx-auto pb-24">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Paramètres & Accès</h1>
-        <p className="text-gray-500 mt-2">Gérez les comptes, les horaires et les fermetures de votre école.</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Paramètres des Cours</h1>
+        <p className="text-gray-500">Gérez le catalogue de cours, les fermetures exceptionnelles et les accès.</p>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-8 w-fit">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === tab.id
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-8 w-max">
+        <button 
+          onClick={() => setActiveTab('courses')}
+          className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'courses' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <List className="w-4 h-4 mr-2" />
+          Catalogue des Cours
+        </button>
+        <button 
+          onClick={() => setActiveTab('exceptions')}
+          className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'exceptions' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <CalendarOff className="w-4 h-4 mr-2" />
+          Fermetures Exceptionnelles
+        </button>
+        <button 
+          onClick={() => setActiveTab('access')}
+          className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'access' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <Shield className="w-4 h-4 mr-2" />
+          Accès & Comptes
+        </button>
+        <button 
+          onClick={() => setActiveTab('integration')}
+          className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'integration' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <Settings className="w-4 h-4 mr-2" />
+          Intégration Shopify
+        </button>
       </div>
 
-      {/* ACCESS TAB */}
-      {activeTab === 'access' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Formulaire de création */}
-          <div className="lg:col-span-1">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 sticky top-24">
-              <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
-                <Plus className="w-5 h-5 mr-2 text-orange-500" />
-                Créer un accès
-              </h2>
-              
-              <form onSubmit={handleCreateUser} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Type de compte (Rôle)</label>
-                  <select 
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                    value={formData.role}
-                    onChange={e => setFormData({...formData, role: e.target.value})}
-                  >
-                    <option value="admin">Administrateur (Toi)</option>
-                    <option value="instructor">Professeur / Moniteur</option>
-                    <option value="partner">Partenaire (La Pelle)</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
+      {activeTab === 'courses' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-900">Catalogue des cours</h2>
+            <button onClick={() => { setEditingCourse(null); setCourseForm({ name: '', duration_minutes: 120, capacity: 4, color: '#10B981' }); setShowCourseModal(true); }} className="bg-gray-900 text-white px-4 py-2 rounded-lg flex items-center text-sm font-medium hover:bg-black transition-colors">
+              <Plus className="w-4 h-4 mr-2" />
+              Nouveau type de cours
+            </button>
+          </div>
+          
+          <div className="space-y-3">
+            {courseTypes.filter(c => c.name !== '__SETTINGS__').map(course => (
+              <div key={course.id} className="flex items-center justify-between p-4 border rounded-xl bg-gray-50 hover:border-gray-300 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: course.color }}></div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Prénom</label>
-                    <input type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500" 
-                      value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})} placeholder="Jean" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nom</label>
-                    <input type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500" 
-                      value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})} placeholder="Dupont" />
+                    <p className="font-bold text-gray-900">{course.name}</p>
+                    <p className="text-sm text-gray-500">{course.duration_minutes} min • Jusqu'à {course.capacity} élèves</p>
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <div className="relative">
-                    <Mail className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
-                    <input type="email" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500" 
-                      value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="email@exemple.com" />
-                  </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditingCourse(course); setCourseForm(course); setShowCourseModal(true); }} className="p-2 text-gray-400 hover:text-orange-600 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
+                  <button onClick={() => deleteCourseType(course.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
+              </div>
+            ))}
+            {courseTypes.filter(c => c.name !== '__SETTINGS__').length === 0 && (
+              <p className="text-gray-500 text-center py-6">Aucun cours dans le catalogue.</p>
+            )}
+          </div>
+        </div>
+      )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe temporaire</label>
-                  <div className="relative">
-                    <Key className="w-5 h-5 text-gray-400 absolute left-3 top-3" />
-                    <input type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500" 
-                      value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="MotDePasse123!" />
-                  </div>
-                </div>
-
-                <button type="submit" disabled={isCreating} className="w-full mt-4 bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
-                  {isCreating ? 'Création...' : 'Créer le compte'}
-                </button>
-              </form>
+      {activeTab === 'exceptions' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Fermetures côté client</h2>
+              <p className="text-sm text-gray-500">Ajoutez des dates pour bloquer les réservations sur le widget.</p>
             </div>
+            <button onClick={() => { setExceptionForm({ date: '', course_type_id: 'all', reason: '', time_type: 'full_day', start_time: '08:00', end_time: '12:00' }); setShowExceptionModal(true); }} className="bg-gray-900 text-white px-4 py-2 rounded-lg flex items-center text-sm font-medium hover:bg-black transition-colors">
+              <CalendarOff className="w-4 h-4 mr-2" />
+              Bloquer une date
+            </button>
+          </div>
+          
+          <div className="space-y-3">
+            {exceptions.map((exc, index) => {
+              const targetCourse = exc.course_type_id === 'all' ? 'Tous les cours' : courseTypes.find(c => c.id === exc.course_type_id)?.name || 'Cours inconnu';
+              return (
+                <div key={index} className="flex items-center justify-between p-4 border border-red-100 rounded-xl bg-red-50">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><CalendarOff className="w-5 h-5" /></div>
+                    <div>
+                      <p className="font-bold text-gray-900">
+                        {exc.date.split('-').reverse().join('/')} 
+                        {exc.time_type === 'specific' ? ` (${exc.start_time} - ${exc.end_time})` : ' (Toute la journée)'} 
+                        {' - '} {targetCourse}
+                      </p>
+                      <p className="text-sm text-red-600">{exc.reason || 'Fermeture exceptionnelle'}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => deleteException(index)} className="p-2 text-red-400 hover:text-red-700 hover:bg-red-100 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+            {exceptions.length === 0 && (
+              <div className="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                <p className="text-gray-500">Aucune fermeture programmée. Le widget est ouvert.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'access' && (
+        <div className="space-y-6">
+          {[
+            { role: 'admin', label: 'Administrateurs', badge: 'Admin', badgeColor: 'bg-orange-100 text-orange-700', description: 'Accès complet au dashboard.' },
+            { role: 'instructor', label: 'Professeurs', badge: 'Prof', badgeColor: 'bg-blue-100 text-blue-700', description: 'Accès au Planning Général uniquement.' },
+            { role: 'partenaire', label: 'Partenaires', badge: 'Partenaire', badgeColor: 'bg-green-100 text-green-700', description: 'Accès au Tableau des Licences uniquement.' },
+          ].map(({ role, label, badge, badgeColor, description }) => (
+            <div key={role} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center mb-4">
+                <Shield className="w-5 h-5 text-orange-500 mr-2" />
+                <h2 className="text-lg font-bold text-gray-900">{label}</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm text-gray-500 mb-3">{description}</p>
+                  <div className="space-y-2">
+                    {usersByRole[role].map(u => (
+                      <div key={u.id} className="flex items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{u.email || u.first_name}</p>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeColor}`}>{badge}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {usersByRole[role].length === 0 && (
+                      <p className="text-sm text-gray-400 py-2">Aucun compte.</p>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 h-max">
+                  <h3 className="font-bold text-gray-900 mb-2 text-sm">Inviter un {label.slice(0, -1).toLowerCase()}</h3>
+                  <input
+                    type="email"
+                    placeholder="adresse@email.com"
+                    value={inviteEmails[role]}
+                    onChange={e => setInviteEmails(prev => ({ ...prev, [role]: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 text-sm"
+                  />
+                  <button
+                    onClick={() => handleInvite(role)}
+                    disabled={inviting[role] || !inviteEmails[role]}
+                    className="w-full bg-gray-900 text-white font-medium py-2 rounded-lg text-sm disabled:opacity-50"
+                  >
+                    {inviting[role] ? 'Envoi...' : 'Envoyer l\'invitation'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'integration' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center mb-6">
+            <Settings className="w-6 h-6 text-orange-500 mr-3" />
+            <h2 className="text-xl font-bold text-gray-900">Intégration Shopify</h2>
+          </div>
+          
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 mb-8">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Comment intégrer le widget de réservation ?</h3>
+            <p className="text-gray-600 mb-4">
+              Pour permettre à vos clients de réserver leurs cours de wingfoil directement depuis votre boutique Shopify, vous devez copier le code ci-dessous et le coller dans une page de votre boutique.
+            </p>
+            <ol className="list-decimal list-inside space-y-2 text-gray-700 mb-6 font-medium">
+              <li>Connectez-vous à votre interface d'administration Shopify.</li>
+              <li>Allez dans <strong>Boutique en ligne {'>'} Pages</strong>.</li>
+              <li>Créez une nouvelle page (ex: "Réserver un cours") ou modifiez-en une existante.</li>
+              <li>Cliquez sur le bouton <strong>&lt;&gt; (Afficher le code HTML)</strong> dans l'éditeur de texte.</li>
+              <li>Collez le code ci-dessous, puis enregistrez la page.</li>
+            </ol>
           </div>
 
-          {/* Liste des comptes */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                  <Shield className="w-5 h-5 mr-2 text-gray-500" />
-                  Comptes existants
-                </h2>
-              </div>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
-                      <th className="px-6 py-3 font-medium">Utilisateur</th>
-                      <th className="px-6 py-3 font-medium">Rôle</th>
-                      <th className="px-6 py-3 font-medium">Date de création</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {loading ? (
-                      <tr><td colSpan="3" className="text-center py-8 text-gray-400">Chargement des comptes...</td></tr>
-                    ) : users.map(user => (
-                      <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center">
-                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold text-xs mr-3">
-                              {user.first_name?.[0]}{user.last_name?.[0]}
-                            </div>
-                            <div>
-                              <div className="font-medium text-gray-900">{user.first_name} {user.last_name}</div>
-                              <div className="text-xs text-gray-500">ID: {user.id.substring(0,8)}...</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                            user.role === 'admin' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                            user.role === 'instructor' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                            user.role === 'partner' ? 'bg-green-50 text-green-700 border-green-200' :
-                            'bg-gray-50 text-gray-700 border-gray-200'
-                          }`}>
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
-                          {new Date(user.created_at).toLocaleDateString('fr-FR')}
-                        </td>
-                      </tr>
-                    ))}
-                    {!loading && users.length === 0 && (
-                      <tr><td colSpan="3" className="text-center py-8 text-gray-400">Aucun compte trouvé.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+          <div>
+            <h3 className="font-bold text-gray-900 mb-3">Code HTML à copier :</h3>
+            <div className="relative">
+              <pre className="bg-gray-900 text-gray-100 p-4 rounded-xl overflow-x-auto text-sm font-mono whitespace-pre-wrap">
+{`<div style="width: 100%; height: 800px; max-width: 1200px; margin: 0 auto; overflow: hidden; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
+  <iframe 
+    src="https://the-ridery-wingclass.vercel.app/widget" 
+    width="100%" 
+    height="100%" 
+    frameborder="0" 
+    style="border: none;"
+    title="Réservation Cours Wingfoil"
+  ></iframe>
+</div>`}
+              </pre>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(`<div style="width: 100%; height: 800px; max-width: 1200px; margin: 0 auto; overflow: hidden; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">\n  <iframe \n    src="https://the-ridery-wingclass.vercel.app/widget" \n    width="100%" \n    height="100%" \n    frameborder="0" \n    style="border: none;"\n    title="Réservation Cours Wingfoil"\n  ></iframe>\n</div>`);
+                  alert('Code copié dans le presse-papier !');
+                }}
+                className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              >
+                Copier le code
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SCHEDULE TAB */}
-      {activeTab === 'schedule' && (
-        <div className="space-y-8">
-          {/* Weekly Schedule */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                  <Clock className="w-5 h-5 mr-2 text-orange-500" />
-                  Horaires d'ouverture
-                </h2>
-                <p className="text-sm text-gray-400 mt-1">Définissez les jours et horaires où les cours peuvent être réservés.</p>
-              </div>
-              <button
-                onClick={handleSaveSchedule}
-                disabled={savingSchedule}
-                className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {savingSchedule ? 'Sauvegarde...' : 'Sauvegarder'}
-              </button>
+      {/* Course Modal */}
+      {showCourseModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-bold text-gray-900">{editingCourse ? 'Modifier le cours' : 'Nouveau type de cours'}</h3>
+              <button onClick={() => setShowCourseModal(false)} className="text-gray-400 hover:text-gray-900"><X className="w-5 h-5" /></button>
             </div>
-
-            <div className="divide-y divide-gray-100">
-              {schedule.map((day) => (
-                <div key={day.id} className={`flex items-center px-6 py-4 gap-6 transition-colors ${!day.isOpen ? 'bg-gray-50/50' : ''}`}>
-                  {/* Toggle */}
-                  <button
-                    onClick={() => toggleDay(day.id)}
-                    className={`relative w-12 h-7 rounded-full transition-colors flex-shrink-0 ${
-                      day.isOpen ? 'bg-orange-500' : 'bg-gray-300'
-                    }`}
-                  >
-                    <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-transform ${
-                      day.isOpen ? 'translate-x-5' : 'translate-x-0.5'
-                    }`} />
-                  </button>
-
-                  {/* Day Name */}
-                  <div className="w-28">
-                    <span className={`font-semibold text-sm ${
-                      day.isOpen ? 'text-gray-900' : 'text-gray-400'
-                    }`}>
-                      {day.label}
-                    </span>
-                  </div>
-
-                  {/* Time Pickers */}
-                  {day.isOpen ? (
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="time"
-                        value={day.openTime}
-                        onChange={(e) => updateTime(day.id, 'openTime', e.target.value)}
-                        className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                      />
-                      <span className="text-gray-400 text-sm">à</span>
-                      <input
-                        type="time"
-                        value={day.closeTime}
-                        onChange={(e) => updateTime(day.id, 'closeTime', e.target.value)}
-                        className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                      />
-                    </div>
-                  ) : (
-                    <span className="text-sm text-gray-400 italic">Fermé</span>
-                  )}
-                </div>
-              ))}
+            <div className="p-6 space-y-4">
+              <div><label className="block text-sm font-medium mb-1">Nom du cours</label><input type="text" value={courseForm.name} onChange={e => setCourseForm({...courseForm, name: e.target.value})} className="w-full p-2 border rounded-lg" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium mb-1">Durée (min)</label><input type="number" value={courseForm.duration_minutes} onChange={e => setCourseForm({...courseForm, duration_minutes: Number(e.target.value)})} className="w-full p-2 border rounded-lg" /></div>
+                <div><label className="block text-sm font-medium mb-1">Places max</label><input type="number" value={courseForm.capacity} onChange={e => setCourseForm({...courseForm, capacity: Number(e.target.value)})} className="w-full p-2 border rounded-lg" /></div>
+              </div>
+              <div><label className="block text-sm font-medium mb-1">Couleur</label><input type="color" value={courseForm.color} onChange={e => setCourseForm({...courseForm, color: e.target.value})} className="w-full h-10 p-1 border rounded-lg cursor-pointer" /></div>
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+              <button onClick={() => setShowCourseModal(false)} className="px-4 py-2 text-gray-600 font-medium">Annuler</button>
+              <button onClick={saveCourse} className="px-4 py-2 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-600">Enregistrer</button>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Closed Dates */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 flex items-center">
-                  <CalendarOff className="w-5 h-5 mr-2 text-red-500" />
-                  Jours de fermeture exceptionnelle
-                </h2>
-                <p className="text-sm text-gray-400 mt-1">Ajoutez des dates spécifiques où l'école sera fermée (jours fériés, vacances, etc.).</p>
-              </div>
-              <button
-                onClick={() => setShowAddClosure(!showAddClosure)}
-                className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium px-4 py-2.5 rounded-xl transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Ajouter
-              </button>
+      {/* Exception Modal */}
+      {showExceptionModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h3 className="font-bold text-gray-900">Bloquer une date</h3>
+              <button onClick={() => setShowExceptionModal(false)} className="text-gray-400 hover:text-gray-900"><X className="w-5 h-5" /></button>
             </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Date à bloquer</label>
+                <input type="date" value={exceptionForm.date} onChange={e => setExceptionForm({...exceptionForm, date: e.target.value})} className="w-full p-2 border rounded-lg" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Quel cours fermer ?</label>
+                <select value={exceptionForm.course_type_id} onChange={e => setExceptionForm({...exceptionForm, course_type_id: e.target.value})} className="w-full p-2 border rounded-lg mb-4">
+                  <option value="all">Tous les cours</option>
+                  {courseTypes.filter(c => c.name !== '__SETTINGS__').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Période</label>
+                <select value={exceptionForm.time_type} onChange={e => setExceptionForm({...exceptionForm, time_type: e.target.value})} className="w-full p-2 border rounded-lg mb-4">
+                  <option value="full_day">Journée complète</option>
+                  <option value="specific">Créneau horaire spécifique</option>
+                </select>
+              </div>
 
-            {/* Add closure form */}
-            {showAddClosure && (
-              <div className="px-6 py-4 bg-orange-50/30 border-b border-orange-100/50">
-                <div className="flex items-end gap-4">
-                  <div className="flex-1">
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Date de fermeture</label>
-                    <input
-                      type="date"
-                      value={newClosedDate.date}
-                      onChange={(e) => setNewClosedDate({ ...newClosedDate, date: e.target.value })}
-                      className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                    />
+              {exceptionForm.time_type === 'specific' && (
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">De</label>
+                    <input type="time" value={exceptionForm.start_time} onChange={e => setExceptionForm({...exceptionForm, start_time: e.target.value})} className="w-full p-2 border rounded-lg" />
                   </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">Raison (optionnel)</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Jour férié, Vacances..."
-                      value={newClosedDate.reason}
-                      onChange={(e) => setNewClosedDate({ ...newClosedDate, reason: e.target.value })}
-                      className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
-                    />
+                  <div>
+                    <label className="block text-sm font-medium mb-1">À</label>
+                    <input type="time" value={exceptionForm.end_time} onChange={e => setExceptionForm({...exceptionForm, end_time: e.target.value})} className="w-full p-2 border rounded-lg" />
                   </div>
-                  <button
-                    onClick={addClosedDate}
-                    disabled={!newClosedDate.date}
-                    className="bg-gray-900 hover:bg-gray-800 text-white font-medium px-6 py-2.5 rounded-xl transition-colors disabled:opacity-50 whitespace-nowrap"
-                  >
-                    Ajouter
-                  </button>
-                  <button
-                    onClick={() => { setShowAddClosure(false); setNewClosedDate({ date: '', reason: '' }); }}
-                    className="p-2.5 hover:bg-gray-100 rounded-xl transition-colors"
-                  >
-                    <X className="w-5 h-5 text-gray-400" />
-                  </button>
                 </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium mb-1">Raison (optionnel)</label>
+                <input type="text" placeholder="Ex: Congés annuels, Tempête..." value={exceptionForm.reason} onChange={e => setExceptionForm({...exceptionForm, reason: e.target.value})} className="w-full p-2 border rounded-lg" />
               </div>
-            )}
-
-            {/* Closed dates list */}
-            {closedDates.length === 0 ? (
-              <div className="p-12 text-center text-gray-400">
-                Aucune fermeture exceptionnelle programmée.
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {closedDates.sort((a, b) => new Date(a.date) - new Date(b.date)).map((closure) => (
-                  <div key={closure.id} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50/50 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
-                        <CalendarOff className="w-5 h-5 text-red-500" />
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-900 text-sm">
-                          {new Date(closure.date + 'T00:00:00').toLocaleDateString('fr-FR', {
-                            weekday: 'long',
-                            day: 'numeric',
-                            month: 'long',
-                            year: 'numeric'
-                          })}
-                        </div>
-                        {closure.reason && (
-                          <div className="text-xs text-gray-400 mt-0.5">{closure.reason}</div>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeClosedDate(closure.id)}
-                      className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4 text-red-400" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            </div>
+            <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+              <button onClick={() => setShowExceptionModal(false)} className="px-4 py-2 text-gray-600 font-medium">Annuler</button>
+              <button onClick={saveException} disabled={!exceptionForm.date} className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50">Bloquer la date</button>
+            </div>
           </div>
         </div>
       )}

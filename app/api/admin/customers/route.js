@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { verifyAdmin } from '../verify-admin';
+import crypto from 'crypto';
 
 export async function POST(req) {
   const adminCheck = await verifyAdmin(req);
@@ -7,6 +8,9 @@ export async function POST(req) {
 
   try {
     const customerData = await req.json();
+    if (!customerData.id) {
+      customerData.id = crypto.randomUUID();
+    }
 
     const { data, error } = await supabaseAdmin
       .from('customers')

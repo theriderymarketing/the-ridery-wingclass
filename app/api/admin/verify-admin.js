@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../../../lib/supabase-admin';
 
-export async function verifyAdmin(request) {
+export async function verifyRole(request, allowedRoles = ['admin']) {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return { error: 'Unauthorized: No token provided', status: 401 };
@@ -13,18 +13,20 @@ export async function verifyAdmin(request) {
     return { error: 'Unauthorized: Invalid token', status: 401 };
   }
 
-  const { data: profile, error: profileError } = await supabaseAdmin
+  const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single();
 
-  // We ignore profileError because the 'profiles' table might not even exist yet (PGRST205)
-  // or it might return no rows (PGRST116).
-  // Same logic as layout.js: allow if admin or if no profile exists
-  if (profile && profile.role !== 'admin') {
-    return { error: 'Forbidden: Requires admin role', status: 403 };
+  const role = profile?.role || 'admin';
+  if (!allowedRoles.includes(role)) {
+    return { error: 'Forbidden: Insufficient role', status: 403 };
   }
 
-  return { user };
+  return { user, role };
+}
+
+export async function verifyAdmin(request) {
+  return verifyRole(request, ['admin']);
 }

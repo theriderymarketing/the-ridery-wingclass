@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, MapPin, Users } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, MapPin, Users, X } from 'lucide-react';
 import { format, addDays, startOfWeek, subWeeks, addWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useStore } from '@/lib/store';
+import { fetchWithAuth } from '@/lib/auth-utils';
 
 export default function AdminCalendar() {
   const { fetchData, isLoaded, sessions, courseTypes, instructors, sessionParticipants, customers } = useStore();
@@ -12,6 +13,10 @@ export default function AdminCalendar() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [showEmptySessions, setShowEmptySessions] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState(null);
+  const [selectedStudentForPopup, setSelectedStudentForPopup] = useState(null);
+  const [emailSearchResults, setEmailSearchResults] = useState([]);
+  const [isSearchingEmail, setIsSearchingEmail] = useState(false);
+  const [emailSearchTerm, setEmailSearchTerm] = useState('');
   const [newSession, setNewSession] = useState({
     instructor_id: '',
     course_type_id: '',
@@ -38,6 +43,32 @@ export default function AdminCalendar() {
     }
   }, [isLoaded, fetchData]);
 
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (emailSearchTerm.length > 2) {
+        setIsSearchingEmail(true);
+        try {
+          const res = await fetchWithAuth(`/api/admin/shopify-customers?q=${encodeURIComponent(emailSearchTerm)}`);
+          const data = await res.json();
+          if (data && data.nodes && data.nodes.length > 0) {
+            setEmailSearchResults(data.nodes);
+          } else {
+            setEmailSearchResults([]);
+          }
+        } catch(err) {
+          console.error(err);
+        } finally {
+          setIsSearchingEmail(false);
+        }
+      } else {
+        setEmailSearchResults([]);
+        setIsSearchingEmail(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [emailSearchTerm]);
+
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
   const hours = Array.from({ length: 11 }).map((_, i) => i + 8); // 8h to 18h
@@ -46,11 +77,17 @@ export default function AdminCalendar() {
     return <div className="flex h-screen items-center justify-center bg-gray-50 text-gray-500">Chargement du calendrier...</div>;
   }
 
+  const safeSessions = Array.isArray(sessions) ? sessions : [];
+  const safeInstructors = Array.isArray(instructors) ? instructors : [];
+  const safeCourseTypes = Array.isArray(courseTypes) ? courseTypes : [];
+  const safeParticipants = Array.isArray(sessionParticipants) ? sessionParticipants : [];
+  const safeCustomers = Array.isArray(customers) ? customers : [];
+
   // Format the DB sessions for the UI
-  const calendarSessions = sessions.map(s => {
-    const instructor = instructors.find(i => i.id === s.instructor_id) || {};
-    const course = courseTypes.find(c => c.id === s.course_type_id) || {};
-    const enrolled = sessionParticipants.filter(p => p.session_id === s.id).length;
+  const calendarSessions = safeSessions.map(s => {
+    const instructor = safeInstructors.find(i => i.id === s.instructor_id) || {};
+    const course = safeCourseTypes.find(c => c.id === s.course_type_id) || {};
+    const enrolled = safeParticipants.filter(p => p.session_id === s.id).length;
     
     return {
       id: s.id,
@@ -108,9 +145,16 @@ export default function AdminCalendar() {
           studentToCreate.license_paid = null;
         }
 
-        const createdStudent = await useStore.getState().addCustomer(studentToCreate);
-        if (createdStudent && createdStudent.id) {
-          await useStore.getState().enrollStudent(sessionId, createdStudent.id);
+        let studentId = newStudent.id;
+        if (!studentId) {
+          const createdStudent = await useStore.getState().addCustomer(studentToCreate);
+          if (createdStudent && createdStudent.id) {
+            studentId = createdStudent.id;
+          }
+        }
+        
+        if (studentId) {
+          await useStore.getState().enrollStudent(sessionId, studentId);
         }
       }
 
@@ -159,7 +203,6 @@ export default function AdminCalendar() {
       end_time: '11:00'
     });
   };
-
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative">
       <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/60 px-8 py-6 sticky top-0 z-30 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
@@ -168,25 +211,32 @@ export default function AdminCalendar() {
           <p className="text-gray-500 mt-1 font-medium">Gérez vos professeurs et vos créneaux en temps réel</p>
         </div>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors">
-            <input 
-              type="checkbox" 
-              className="rounded text-orange-500 focus:ring-orange-500 w-4 h-4 cursor-pointer"
-              checked={showEmptySessions}
-              onChange={(e) => setShowEmptySessions(e.target.checked)}
-            />
-            Afficher les créneaux vides
-          </label>
+
           <div className="flex items-center gap-2">
-            <button onClick={() => setCurrentDate(subWeeks(currentDate, 1))} className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 text-gray-600 transition-all shadow-sm">
+          <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
+            <button onClick={() => setCurrentDate(subWeeks(currentDate, 1))} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <button onClick={() => setCurrentDate(new Date())} className="px-5 py-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 text-gray-700 font-bold transition-all shadow-sm">
-              Aujourd'hui
-            </button>
-            <button onClick={() => setCurrentDate(addWeeks(currentDate, 1))} className="p-2.5 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 text-gray-600 transition-all shadow-sm">
+            <div className="flex flex-col items-center min-w-[140px]">
+              <span className="text-sm font-bold text-gray-900 capitalize">
+                {format(currentDate, 'MMMM yyyy', { locale: fr })}
+              </span>
+              <input 
+                type="date"
+                value={format(currentDate, 'yyyy-MM-dd')}
+                onChange={(e) => {
+                  if(e.target.value) setCurrentDate(new Date(e.target.value));
+                }}
+                className="text-xs text-gray-500 bg-transparent border-none focus:ring-0 p-0 cursor-pointer outline-none w-auto text-center"
+              />
+            </div>
+            <button onClick={() => setCurrentDate(addWeeks(currentDate, 1))} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
               <ChevronRight className="w-5 h-5" />
             </button>
+          </div>
+          <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 text-gray-700 font-semibold text-sm transition-all shadow-sm">
+            Aujourd'hui
+          </button>
           </div>
           <button onClick={() => setIsSessionModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5">
             <Plus className="w-5 h-5" />
@@ -246,7 +296,7 @@ export default function AdminCalendar() {
               </div>
             ))}
 
-            {calendarSessions.filter(session => showEmptySessions || session.enrolled > 0).map((session) => {
+            {calendarSessions.filter(session => session.enrolled > 0).map((session) => {
               const dayDiff = Math.floor((session.start_time - weekStart) / (1000 * 60 * 60 * 24));
               if (dayDiff < 0 || dayDiff > 6) return null; 
 
@@ -259,7 +309,7 @@ export default function AdminCalendar() {
               const isFull = session.enrolled >= session.capacity;
 
               // Gestion des chevauchements (en ne comptant que les visibles)
-              const visibleSessions = calendarSessions.filter(s => showEmptySessions || s.enrolled > 0);
+              const visibleSessions = calendarSessions.filter(s => s.enrolled > 0);
               const sameDaySessions = visibleSessions.filter(s => 
                 s.start_time.getDay() === session.start_time.getDay() &&
                 s.start_time.getFullYear() === session.start_time.getFullYear() &&
@@ -329,7 +379,7 @@ export default function AdminCalendar() {
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                 >
                   <option value="">Sélectionner un type</option>
-                  {courseTypes.map(c => (
+                  {safeCourseTypes.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
@@ -344,7 +394,7 @@ export default function AdminCalendar() {
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                 >
                   <option value="">Sélectionner un professeur</option>
-                  {instructors.map(i => (
+                  {safeInstructors.map(i => (
                     <option key={i.id} value={i.id}>{i.first_name} {i.last_name}</option>
                   ))}
                 </select>
@@ -397,6 +447,68 @@ export default function AdminCalendar() {
 
                 {showStudentForm && (
                   <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200 overflow-y-auto max-h-[40vh]">
+                    <div className="mb-4 relative">
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">Email *</label>
+                      <input 
+                        type="email" 
+                        required={showStudentForm}
+                        value={newStudent.email} 
+                        onChange={(e) => {
+                          const email = e.target.value;
+                          setNewStudent(prev => ({ ...prev, email }));
+                          setEmailSearchTerm(email);
+                          
+                          // Chercher d'abord dans la base locale
+                          const localCustomer = safeCustomers.find(c => c.email?.toLowerCase() === email.toLowerCase());
+                          if (localCustomer) {
+                            setNewStudent(prev => ({
+                              ...prev,
+                              email,
+                              id: localCustomer.id,
+                              first_name: localCustomer.first_name || prev.first_name,
+                              last_name: localCustomer.last_name || prev.last_name,
+                              phone: localCustomer.phone || prev.phone,
+                              address: localCustomer.address || prev.address,
+                              birth_date: localCustomer.birth_date || prev.birth_date,
+                              has_license: localCustomer.has_license || false,
+                              license_paid: localCustomer.license_paid || false,
+                              license_type: localCustomer.license_type || 'journée'
+                            }));
+                            setEmailSearchResults([]);
+                            setEmailSearchTerm(''); // Clear search term so it doesn't fetch
+                          }
+                        }} 
+                        className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" 
+                      />
+                      
+                      {isSearchingEmail && <div className="absolute right-3 top-8 text-xs text-gray-400">Recherche...</div>}
+
+                      {emailSearchResults.length > 0 && (
+                        <ul className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto mt-1">
+                          {emailSearchResults.map(c => (
+                            <li 
+                              key={c.id} 
+                              className="px-4 py-2 hover:bg-orange-50 cursor-pointer text-sm border-b border-gray-50 last:border-0"
+                              onClick={() => {
+                                setNewStudent(prev => ({
+                                  ...prev,
+                                  email: c.email,
+                                  first_name: prev.first_name || c.firstName || '',
+                                  last_name: prev.last_name || c.lastName || '',
+                                  phone: prev.phone || c.phone || '',
+                                  address: prev.address || (c.defaultAddress ? `${c.defaultAddress.address1 || ''} ${c.defaultAddress.city || ''}`.trim() : '')
+                                }));
+                                setEmailSearchResults([]);
+                              }}
+                            >
+                              <div className="font-bold text-gray-900">{c.email}</div>
+                              <div className="text-gray-500 text-xs">{c.firstName} {c.lastName}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 mb-1">Prénom *</label>
@@ -417,11 +529,6 @@ export default function AdminCalendar() {
                         <label className="block text-xs font-semibold text-gray-700 mb-1">Téléphone</label>
                         <input type="tel" value={newStudent.phone} onChange={(e) => setNewStudent({...newStudent, phone: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
                       </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1">Email</label>
-                      <input type="email" value={newStudent.email} onChange={(e) => setNewStudent({...newStudent, email: e.target.value})} className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500" />
                     </div>
 
                     <div>
@@ -484,21 +591,38 @@ export default function AdminCalendar() {
             {editingSessionId && (
               <div className="mt-8 border-t border-gray-100 pt-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">Élèves inscrits</h3>
-                {sessionParticipants.filter(p => p.session_id === editingSessionId).length === 0 ? (
+                {(!safeParticipants || safeParticipants.filter(p => p.session_id === editingSessionId).length === 0) ? (
                   <div className="text-sm text-gray-500 bg-gray-50 p-4 rounded-xl text-center">
                     Aucun élève inscrit pour le moment.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {sessionParticipants.filter(p => p.session_id === editingSessionId).map(p => {
-                      const customer = customers.find(c => c.id === p.customer_id);
+                    {safeParticipants.filter(p => p.session_id === editingSessionId).map(p => {
+                      const customer = safeCustomers.find(c => c.id === p.customer_id);
                       if (!customer) return null;
                       return (
-                        <div key={p.id} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex justify-between items-center">
+                        <div 
+                          key={p.id} 
+                          className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex justify-between items-center group cursor-pointer hover:bg-orange-50 transition-colors"
+                          onClick={() => setSelectedStudentForPopup(customer)}
+                        >
                           <div>
                             <div className="font-bold text-gray-900 text-sm">{customer.first_name} {customer.last_name}</div>
                             <div className="text-xs text-gray-500">{customer.email} • {customer.phone || 'Pas de tel'}</div>
                           </div>
+                          <button 
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (confirm(`Retirer ${customer.first_name} de ce créneau ?`)) {
+                                await useStore.getState().removeStudent(p.id);
+                              }
+                            }}
+                            className="text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            Retirer
+                          </button>
                         </div>
                       );
                     })}
@@ -509,6 +633,59 @@ export default function AdminCalendar() {
           </div>
         </div>
       )}
+
+      {/* POPUP ELEVE */}
+      {selectedStudentForPopup && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col relative">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <h3 className="text-lg font-bold text-gray-900">
+                Fiche Élève
+              </h3>
+              <button onClick={() => setSelectedStudentForPopup(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Nom Complet</div>
+                <div className="font-medium text-gray-900 text-lg">{selectedStudentForPopup.first_name} {selectedStudentForPopup.last_name}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Email</div>
+                <div className="font-medium text-gray-900">{selectedStudentForPopup.email}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Téléphone</div>
+                <div className="font-medium text-gray-900">{selectedStudentForPopup.phone || 'Non renseigné'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Adresse</div>
+                <div className="font-medium text-gray-900">{selectedStudentForPopup.address || 'Non renseignée'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Date de Naissance</div>
+                <div className="font-medium text-gray-900">{selectedStudentForPopup.birth_date ? format(new Date(selectedStudentForPopup.birth_date), 'dd/MM/yyyy') : 'Non renseignée'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-1">Licence FFV</div>
+                <div className="font-medium text-gray-900 mt-1">
+                  {selectedStudentForPopup.has_license ? (
+                    <span className="text-green-600 font-bold bg-green-50 px-2 py-1 rounded">
+                      A déjà une licence
+                    </span>
+                  ) : (
+                    <span className="text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded">
+                      Prise au club : {selectedStudentForPopup.license_type || 'journée'} ({selectedStudentForPopup.license_paid ? 'Payée' : 'À payer'})
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

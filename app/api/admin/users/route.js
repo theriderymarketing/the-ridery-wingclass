@@ -17,38 +17,33 @@ export async function POST(req) {
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const supabaseAdmin = getSupabaseAdmin();
-    const { email, password, role, firstName, lastName } = await req.json();
+    const { email, role } = await req.json();
 
-    if (!email || !password || !role) {
-      return NextResponse.json({ error: 'Email, mot de passe et rôle requis' }, { status: 400 });
+    if (!email || !role) {
+      return NextResponse.json({ error: 'Email et rôle requis' }, { status: 400 });
     }
 
-    // 1. Créer le compte utilisateur dans le système d'authentification
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true, // Pour éviter l'envoi d'email de confirmation
-      user_metadata: { first_name: firstName, last_name: lastName }
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://the-ridery-wingclass.vercel.app';
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      data: { role },
+      redirectTo: `${siteUrl}/admin`
     });
 
     if (authError) throw authError;
 
-    // 2. Créer le profil avec le rôle choisi
     const { error: profileError } = await supabaseAdmin.from('profiles').insert([
-      { id: authData.user.id, role, first_name: firstName, last_name: lastName }
+      { id: authData.user.id, role, email }
     ]);
-
     if (profileError) throw profileError;
 
-    // 3. Si c'est un prof, l'ajouter automatiquement à la table instructors
     if (role === 'instructor') {
       const { error: instError } = await supabaseAdmin.from('instructors').insert([
-        { user_id: authData.user.id, email, first_name: firstName, last_name: lastName }
+        { user_id: authData.user.id, email }
       ]);
       if (instError) throw instError;
     }
 
-    return NextResponse.json({ success: true, user: authData.user });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Erreur API Users:", error);
     return NextResponse.json({ error: error.message }, { status: 400 });

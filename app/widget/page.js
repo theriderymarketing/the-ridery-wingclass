@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Users, MapPin, Info, AlertCircle, CheckCircle } from 'lucide-react';
-import { format, addDays, subDays, parseISO } from 'date-fns';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Clock, Users, MapPin, Info, ArrowLeft } from 'lucide-react';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isToday, isBefore, startOfDay, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,10 +23,11 @@ function WidgetContent() {
   const searchParams = useSearchParams();
   const courseIdParam = searchParams.get('courseId');
 
-  const [sessions, setSessions] = useState([]);
+  const [monthSessions, setMonthSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
+  const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
   const [selectedSession, setSelectedSession] = useState(null);
   
   // Checkout Form State
@@ -42,18 +43,21 @@ function WidgetContent() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    fetchSessions();
-  }, [selectedDate, courseIdParam]);
+  // Calendar calculations
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = startOfWeek(monthStart, { weekStartsOn: 1 });
+  const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  
+  const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
-  const fetchSessions = async () => {
+  useEffect(() => {
+    fetchMonthSessions();
+  }, [currentMonth, courseIdParam]);
+
+  const fetchMonthSessions = async () => {
     setLoading(true);
     try {
-      const start = new Date(selectedDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(selectedDate);
-      end.setHours(23, 59, 59, 999);
-
       let query = supabase
         .from('sessions')
         .select(`
@@ -62,8 +66,8 @@ function WidgetContent() {
           course_types (name, capacity, color),
           session_participants (id, status)
         `)
-        .gte('start_time', start.toISOString())
-        .lte('start_time', end.toISOString())
+        .gte('start_time', startDate.toISOString())
+        .lte('start_time', endDate.toISOString())
         .order('start_time', { ascending: true });
 
       if (courseIdParam) {
@@ -71,9 +75,8 @@ function WidgetContent() {
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
-      setSessions(data || []);
+      setMonthSessions(data || []);
     } catch (error) {
       console.error('Error fetching sessions:', error);
     } finally {
@@ -111,202 +114,268 @@ function WidgetContent() {
     }
   };
 
+  const daySessions = useMemo(() => {
+    return monthSessions.filter(s => isSameDay(parseISO(s.start_time), selectedDate));
+  }, [monthSessions, selectedDate]);
+
+  const hasAvailableSlots = (date) => {
+    const sessions = monthSessions.filter(s => isSameDay(parseISO(s.start_time), date));
+    return sessions.some(session => {
+      const capacity = session.course_types?.capacity || 4;
+      const enrolled = session.session_participants?.filter(p => p.status !== 'cancelled').length || 0;
+      return (capacity - enrolled) > 0;
+    });
+  };
+
+  // -- VUE DU FORMULAIRE DE PAIEMENT --
   if (selectedSession) {
     return (
-      <div className="min-h-screen bg-transparent flex flex-col p-4 font-sans">
-        <div className="max-w-2xl mx-auto w-full bg-white border border-gray-200 rounded-3xl p-6 md:p-8 shadow-xl shadow-gray-200/50">
+      <div className="min-h-screen bg-[#F8FAFC] flex flex-col p-4 md:p-8 font-sans items-center justify-center">
+        <div className="max-w-3xl w-full bg-white rounded-3xl p-6 md:p-10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100">
           <button 
             onClick={() => setSelectedSession(null)}
-            className="text-sm font-bold text-gray-500 hover:text-gray-900 flex items-center mb-6 transition-colors"
+            className="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:text-gray-900 hover:border-gray-900 mb-8 transition-colors"
           >
-            <ChevronLeft className="w-5 h-5 mr-1" /> Retour au planning
+            <ArrowLeft className="w-5 h-5" />
           </button>
           
-          <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-6">Vos informations</h2>
-
-          <div className="bg-gray-50 p-4 md:p-5 rounded-2xl mb-6 border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center text-sm font-bold text-gray-900 mb-1">
-                <CalendarIcon className="w-4 h-4 mr-2 text-orange-500" />
-                {format(parseISO(selectedSession.start_time), 'EEEE d MMMM yyyy', { locale: fr })}
-              </div>
-              <div className="flex items-center text-sm font-bold text-gray-500">
-                <Clock className="w-4 h-4 mr-2 text-orange-500" />
-                {format(parseISO(selectedSession.start_time), 'HH:mm')} - {format(parseISO(selectedSession.end_time), 'HH:mm')} ({selectedSession.course_types?.name})
-              </div>
-            </div>
-            <div className="text-left md:text-right">
-               <span className="inline-block bg-white px-3 py-1.5 rounded-lg border border-gray-200 font-bold text-orange-600 text-sm shadow-sm">
-                  {selectedSession.course_types?.capacity - (selectedSession.session_participants?.filter(p => p.status !== 'cancelled').length || 0)} places dispo
-               </span>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm font-bold flex items-start">
-              <Info className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" />
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleCheckout} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Prénom *</label>
-                <input type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-medium" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Nom *</label>
-                <input type="text" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-medium" value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
+          <div className="flex flex-col md:flex-row gap-10">
+            <div className="md:w-1/3 border-b md:border-b-0 md:border-r border-gray-100 pb-8 md:pb-0 md:pr-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">Récapitulatif</h2>
+              <div className="space-y-4">
+                <div className="flex items-start">
+                  <CalendarIcon className="w-5 h-5 mr-3 text-gray-400 mt-0.5" />
+                  <span className="text-gray-700 font-medium">{format(parseISO(selectedSession.start_time), 'EEEE d MMMM yyyy', { locale: fr })}</span>
+                </div>
+                <div className="flex items-start">
+                  <Clock className="w-5 h-5 mr-3 text-gray-400 mt-0.5" />
+                  <span className="text-gray-700 font-medium">
+                    {format(parseISO(selectedSession.start_time), 'HH:mm')} - {format(parseISO(selectedSession.end_time), 'HH:mm')}
+                  </span>
+                </div>
+                <div className="flex items-start">
+                  <MapPin className="w-5 h-5 mr-3 text-gray-400 mt-0.5" />
+                  <span className="text-gray-700 font-medium">{selectedSession.spot_location || 'Marseille'}</span>
+                </div>
+                <div className="flex items-start">
+                  <Info className="w-5 h-5 mr-3 text-gray-400 mt-0.5" />
+                  <span className="text-gray-700 font-medium">{selectedSession.course_types?.name}</span>
+                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">Email *</label>
-              <input type="email" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-medium" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Téléphone *</label>
-                <input type="tel" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-medium" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">Date de naissance *</label>
-                <input type="date" required className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all font-medium" value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} />
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-gray-100">
-              <label className="flex items-center space-x-3 mb-4 cursor-pointer">
-                <input type="checkbox" className="w-5 h-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 bg-white" checked={formData.has_license} onChange={e => setFormData({...formData, has_license: e.target.checked})} />
-                <span className="text-sm font-bold text-gray-800">J'ai déjà une licence FFV</span>
-              </label>
-
-              {!formData.has_license && (
-                <div className="bg-orange-50/50 p-4 rounded-xl border border-orange-100/50 space-y-3">
-                  <p className="text-sm font-bold text-orange-900">Type de licence souhaitée :</p>
-                  <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input type="radio" name="license_type" value="journee" checked={formData.license_type === 'journee'} onChange={e => setFormData({...formData, license_type: e.target.value})} className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300" />
-                      <span className="text-sm font-bold text-orange-800">Pass Journée</span>
-                    </label>
-                    <label className="flex items-center space-x-2 cursor-pointer">
-                      <input type="radio" name="license_type" value="annuelle" checked={formData.license_type === 'annuelle'} onChange={e => setFormData({...formData, license_type: e.target.value})} className="w-4 h-4 text-orange-600 focus:ring-orange-500 border-gray-300" />
-                      <span className="text-sm font-bold text-orange-800">Licence Annuelle</span>
-                    </label>
-                  </div>
+            <div className="md:w-2/3">
+              <h2 className="text-2xl font-extrabold text-gray-900 mb-6">Vos informations</h2>
+              
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-sm font-bold flex items-start">
+                  <AlertCircle className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" />
+                  {error}
                 </div>
               )}
-            </div>
 
-            <button type="submit" disabled={checkoutLoading} className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-extrabold py-4 px-6 rounded-xl transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed mt-6 flex justify-center items-center text-base md:text-lg">
-              {checkoutLoading ? <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-white"></div> : "Aller au paiement"}
-            </button>
-          </form>
+              <form onSubmit={handleCheckout} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Prénom *</label>
+                    <input type="text" required className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-all font-medium" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Nom *</label>
+                    <input type="text" required className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-all font-medium" value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Email *</label>
+                  <input type="email" required className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-all font-medium" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Téléphone *</label>
+                    <input type="tel" required className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-all font-medium" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Date de naissance *</label>
+                    <input type="date" required className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-gray-900 focus:ring-1 focus:ring-gray-900 transition-all font-medium" value={formData.birth_date} onChange={e => setFormData({...formData, birth_date: e.target.value})} />
+                  </div>
+                </div>
+
+                <div className="pt-6">
+                  <label className="flex items-center space-x-3 mb-4 cursor-pointer">
+                    <input type="checkbox" className="w-5 h-5 rounded border-gray-300 text-gray-900 focus:ring-gray-900 bg-white" checked={formData.has_license} onChange={e => setFormData({...formData, has_license: e.target.checked})} />
+                    <span className="text-sm font-bold text-gray-800">J'ai déjà une licence FFV</span>
+                  </label>
+
+                  {!formData.has_license && (
+                    <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 space-y-4 mt-4">
+                      <p className="text-sm font-bold text-gray-900">Type de licence souhaitée :</p>
+                      <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                          <input type="radio" name="license_type" value="journee" checked={formData.license_type === 'journee'} onChange={e => setFormData({...formData, license_type: e.target.value})} className="w-4 h-4 text-gray-900 focus:ring-gray-900 border-gray-300" />
+                          <span className="text-sm font-bold text-gray-700">Pass Journée</span>
+                        </label>
+                        <label className="flex items-center space-x-3 cursor-pointer">
+                          <input type="radio" name="license_type" value="annuelle" checked={formData.license_type === 'annuelle'} onChange={e => setFormData({...formData, license_type: e.target.value})} className="w-4 h-4 text-gray-900 focus:ring-gray-900 border-gray-300" />
+                          <span className="text-sm font-bold text-gray-700">Licence Annuelle</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button type="submit" disabled={checkoutLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-4 px-6 rounded-xl transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed mt-8 flex justify-center items-center text-lg">
+                  {checkoutLoading ? <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white"></div> : "Confirmer l'événement"}
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
+  // -- VUE CALENDRIER CALENDLY-STYLE --
   return (
-    <div className="min-h-screen bg-transparent text-gray-900 font-sans p-2 sm:p-4 md:p-6 lg:p-8">
-      <div className="max-w-xl mx-auto">
+    <div className="min-h-screen bg-[#F8FAFC] p-4 md:p-10 font-sans flex items-center justify-center">
+      <div className="max-w-5xl w-full bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 flex flex-col md:flex-row overflow-hidden">
         
-        {/* Calendar Nav */}
-        <div className="bg-white border border-gray-200 rounded-3xl p-2 flex items-center justify-between mb-6 shadow-xl shadow-gray-200/40">
-          <button onClick={() => setSelectedDate(subDays(selectedDate, 1))} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all text-gray-500 hover:text-gray-900">
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-          
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] md:text-xs font-bold uppercase tracking-widest text-orange-500 mb-0.5">
-              {selectedDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
-            </span>
-            <span className="text-lg md:text-xl font-extrabold text-gray-900 flex items-center capitalize">
-              {selectedDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric' })}
-            </span>
+        {/* Colonne Gauche : Infos & Calendrier */}
+        <div className="md:w-1/2 p-8 md:p-10 border-b md:border-b-0 md:border-r border-gray-100">
+          <div className="flex flex-col items-center md:items-start text-center md:text-left mb-8">
+            <div className="w-20 h-20 bg-orange-50 rounded-full border border-orange-100 flex items-center justify-center mb-6">
+              <span className="text-xl font-black text-orange-600 tracking-tight">THE RIDERY</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 mb-4 tracking-tight leading-tight">
+              Cours de Wingfoil à Marseille avec The Ridery
+            </h1>
+            <p className="text-gray-500 font-medium leading-relaxed">
+              Les cours durent 2h, pense à bien arriver 20 minutes avant pour te préparer et pas perdre une seule seconde sur l'eau!
+            </p>
           </div>
 
-          <button onClick={() => setSelectedDate(addDays(selectedDate, 1))} className="p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all text-gray-500 hover:text-gray-900">
-            <ChevronRight className="w-6 h-6" />
-          </button>
-        </div>
-
-        {/* Sessions List */}
-        <div className="space-y-4">
-          {loading ? (
-            <div className="flex justify-center p-12">
-              <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-orange-500 border-r-4 border-transparent"></div>
+          <div className="mt-10">
+            <div className="flex items-center justify-between mb-8">
+              <button 
+                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-50 text-blue-600 transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <h2 className="text-lg font-medium text-gray-900 capitalize">
+                {format(currentMonth, 'MMMM yyyy', { locale: fr })}
+              </h2>
+              <button 
+                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
             </div>
-          ) : sessions.length > 0 ? (
-            sessions.map(session => {
-              const capacity = session.course_types?.capacity || 4;
-              const enrolled = session.session_participants?.filter(p => p.status !== 'cancelled').length || 0;
-              const isFull = enrolled >= capacity;
-              const remaining = capacity - enrolled;
 
-              return (
-                <div key={session.id} className="group bg-white border border-gray-200 hover:border-orange-200 rounded-3xl p-5 transition-all duration-300 hover:shadow-xl hover:shadow-orange-500/10 relative overflow-hidden">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="px-3 py-1 rounded-lg text-[10px] md:text-xs font-extrabold uppercase tracking-widest border" style={{ 
-                          backgroundColor: `${session.course_types?.color}10` || '#f9731610',
-                          borderColor: `${session.course_types?.color}30` || '#f9731630',
-                          color: session.course_types?.color || '#f97316'
-                        }}>
-                          {session.course_types?.name}
-                        </span>
-                        {isFull ? (
-                          <span className="px-3 py-1 bg-red-50 text-red-600 border border-red-100 rounded-lg text-[10px] md:text-xs font-extrabold">COMPLET</span>
-                        ) : (
-                          <span className="px-3 py-1 bg-green-50 text-green-600 border border-green-100 rounded-lg text-[10px] md:text-xs font-extrabold">{remaining} places dispo</span>
-                        )}
-                      </div>
-                      
-                      <div className="text-2xl font-extrabold text-gray-900 mb-2 tracking-tight flex items-center">
-                        {new Date(session.start_time).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})} 
-                        <span className="text-gray-300 text-xl mx-2">→</span> 
-                        {new Date(session.end_time).toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'})}
-                      </div>
+            <div className="grid grid-cols-7 gap-y-6 text-center mb-4">
+              {['LU', 'MA', 'ME', 'JE', 'VE', 'SA', 'DI'].map(day => (
+                <div key={day} className="text-xs font-bold text-gray-400 tracking-wider">
+                  {day}
+                </div>
+              ))}
+              
+              {calendarDays.map((day, dayIdx) => {
+                const isCurrentMonth = isSameMonth(day, currentMonth);
+                const isPast = isBefore(day, startOfDay(new Date()));
+                const isSelected = isSameDay(day, selectedDate);
+                const hasSlots = hasAvailableSlots(day);
+                const isClickable = isCurrentMonth && !isPast && hasSlots;
 
-                      <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-gray-500">
-                        <span className="flex items-center">
-                          <MapPin className="w-3.5 h-3.5 mr-1 text-gray-400" />
-                          {session.spot_location || 'Lieu non défini'}
-                        </span>
-                        <span className="flex items-center">
-                          <Users className="w-3.5 h-3.5 mr-1 text-gray-400" />
-                          {session.instructors?.first_name} {session.instructors?.last_name}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button 
-                      onClick={() => setSelectedSession(session)}
-                      disabled={isFull}
-                      className={`w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all transform active:scale-95 ${
-                        isFull 
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200' 
-                          : 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5'
-                      }`}
+                return (
+                  <div key={day.toString()} className="flex justify-center relative">
+                    <button
+                      onClick={() => isClickable && setSelectedDate(day)}
+                      disabled={!isClickable}
+                      className={`
+                        w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold transition-all relative
+                        ${!isCurrentMonth ? 'text-white pointer-events-none' : ''}
+                        ${isCurrentMonth && isPast ? 'text-gray-300 line-through' : ''}
+                        ${isCurrentMonth && !isPast && !hasSlots ? 'text-gray-400' : ''}
+                        ${isCurrentMonth && !isPast && hasSlots && !isSelected ? 'text-blue-600 bg-blue-50 hover:bg-blue-100' : ''}
+                        ${isSelected ? 'bg-gray-900 text-white' : ''}
+                      `}
                     >
-                      {isFull ? 'COMPLET' : 'RÉSERVER'}
+                      {format(day, 'd')}
+                      
+                      {/* Petit point indicateur sous le jour (si cliquable et non sélectionné) */}
+                      {isClickable && !isSelected && (
+                        <div className="absolute bottom-2 w-1 h-1 bg-blue-600 rounded-full"></div>
+                      )}
                     </button>
                   </div>
-                </div>
-              );
-            })
-          ) : (
-            <div className="bg-white border border-gray-200 rounded-3xl p-10 text-center shadow-sm">
-              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-100">
-                <CalendarIcon className="w-6 h-6 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Aucun créneau</h3>
-              <p className="text-sm font-medium text-gray-500">Pas de cours programmé pour cette date.</p>
+                );
+              })}
             </div>
-          )}
+
+            <div className="mt-8 text-center bg-gray-50 p-4 rounded-xl border border-gray-100">
+              <span className="text-sm font-medium text-gray-700">Vous ne trouvez pas votre date ? </span>
+              <a href="mailto:contact@theridery.com" className="text-sm font-bold text-blue-600 hover:underline">
+                Rejoindre la liste d'attente
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Colonne Droite : Horaires */}
+        <div className="md:w-1/2 bg-gray-50/50 p-8 md:p-10 flex flex-col h-full min-h-[600px]">
+          <h3 className="text-lg font-medium text-gray-900 mb-6 text-center md:text-left">
+            {format(selectedDate, 'EEEE d MMMM', { locale: fr })}
+          </h3>
+
+          <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+            {loading ? (
+              <div className="flex justify-center items-center h-40">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
+              </div>
+            ) : daySessions.length > 0 ? (
+              daySessions.map(session => {
+                const capacity = session.course_types?.capacity || 4;
+                const enrolled = session.session_participants?.filter(p => p.status !== 'cancelled').length || 0;
+                const remaining = capacity - enrolled;
+                const isFull = remaining <= 0;
+
+                return (
+                  <button
+                    key={session.id}
+                    disabled={isFull}
+                    onClick={() => setSelectedSession(session)}
+                    className={`
+                      w-full p-4 rounded-xl border flex items-center justify-between transition-all duration-200 group
+                      ${isFull 
+                        ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' 
+                        : 'border-blue-200 bg-white text-blue-600 hover:border-blue-600 hover:shadow-md'
+                      }
+                    `}
+                  >
+                    <span className={`text-lg font-bold ${isFull ? 'text-gray-500' : 'group-hover:text-blue-700'}`}>
+                      {format(parseISO(session.start_time), 'HH:mm')}
+                    </span>
+                    <div className="flex items-center">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${
+                        isFull 
+                          ? 'bg-gray-200 text-gray-500' 
+                          : 'bg-blue-50 text-blue-700 group-hover:bg-blue-100'
+                      }`}>
+                        {isFull ? 'COMPLET' : `${remaining} PLACE${remaining > 1 ? 'S' : ''} RESTANTE${remaining > 1 ? 'S' : ''}`}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+                <CalendarIcon className="w-8 h-8 mb-2 opacity-50" />
+                <p className="font-medium text-sm">Aucun créneau disponible</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -10,7 +10,7 @@ export default function WidgetPage({ params }) {
   // En Next.js 15, params est une promesse, mais pour l'instant on simule si nécessaire
   // const courseId = params?.courseId;
   
-  const { sessions, courseTypes, fetchData, isLoaded, sessionParticipants } = useStore();
+  const { sessions, courseTypes, settings, fetchData, isLoaded, sessionParticipants, fetchSettings } = useStore();
   const [currentWeek, setCurrentWeek] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedSession, setSelectedSession] = useState(null);
@@ -27,7 +27,9 @@ export default function WidgetPage({ params }) {
   });
 
   useEffect(() => {
-    if (!isLoaded) fetchData();
+    if (!isLoaded) {
+      fetchData();
+    }
   }, [isLoaded, fetchData]);
 
   if (!isLoaded) {
@@ -40,8 +42,38 @@ export default function WidgetPage({ params }) {
   // Jours de la semaine affichée
   const days = Array.from({ length: 7 }).map((_, i) => addDays(currentWeek, i));
 
+  // Closed dates configuration
+  const closedDates = settings?.closedDates || [];
+
   // Sessions du jour sélectionné
-  const sessionsOfTheDay = availableSessions.filter(s => isSameDay(new Date(s.start_time), selectedDate));
+  const sessionsOfTheDay = availableSessions.filter(s => {
+    if (!isSameDay(new Date(s.start_time), selectedDate)) return false;
+    
+    // Check if there is an exception closing this specific day for all courses or this specific course
+    const formattedDate = format(selectedDate, "yyyy-MM-dd");
+    const isClosed = closedDates.some(exc => {
+      if (exc.date !== formattedDate) return false;
+      if (exc.course_type_id !== 'all' && exc.course_type_id !== s.course_type_id) return false;
+
+      if (exc.time_type === 'specific' && exc.start_time && exc.end_time) {
+        const sessionStartHours = new Date(s.start_time).getHours() + new Date(s.start_time).getMinutes() / 60;
+        const sessionEndHours = new Date(s.end_time).getHours() + new Date(s.end_time).getMinutes() / 60;
+        
+        const [excStartH, excStartM] = exc.start_time.split(':').map(Number);
+        const [excEndH, excEndM] = exc.end_time.split(':').map(Number);
+        
+        const excStartHours = excStartH + excStartM / 60;
+        const excEndHours = excEndH + excEndM / 60;
+        
+        // Overlap condition: sessionStart < excEnd AND sessionEnd > excStart
+        return sessionStartHours < excEndHours && sessionEndHours > excStartHours;
+      }
+      
+      return true; // full_day or backwards compatibility
+    });
+    
+    return !isClosed;
+  });
 
   const handleNextWeek = () => setCurrentWeek(addDays(currentWeek, 7));
   const handlePrevWeek = () => setCurrentWeek(addDays(currentWeek, -7));

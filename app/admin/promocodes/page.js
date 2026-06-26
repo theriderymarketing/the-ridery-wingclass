@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, Search, Tag, Trash2, Send, X } from 'lucide-react';
+import { fetchWithAuth } from '../../../lib/auth-utils';
 
 export default function PromoCodesPage() {
   const [promos, setPromos] = useState([]);
@@ -20,10 +21,10 @@ export default function PromoCodesPage() {
   const fetchPromos = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/promos');
+      const res = await fetchWithAuth('/api/admin/promos');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setPromos(data || []);
+      setPromos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Erreur chargement codes promo:', error);
     }
@@ -48,7 +49,7 @@ export default function PromoCodesPage() {
     };
 
     try {
-      const res = await fetch('/api/admin/promos', {
+      const res = await fetchWithAuth('/api/admin/promos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(promoData)
@@ -71,7 +72,7 @@ export default function PromoCodesPage() {
 
   const toggleStatus = async (id, currentStatus) => {
     try {
-      const res = await fetch('/api/admin/promos', {
+      const res = await fetchWithAuth('/api/admin/promos', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, is_active: !currentStatus })
@@ -95,7 +96,7 @@ export default function PromoCodesPage() {
 
   const executeDelete = async (id) => {
     try {
-      const res = await fetch(`/api/admin/promos?id=${id}`, { method: 'DELETE' });
+      const res = await fetchWithAuth(`/api/admin/promos?id=${id}`, { method: 'DELETE' });
       if (res.ok) fetchPromos();
     } catch (err) {
       console.error(err);
@@ -117,7 +118,7 @@ export default function PromoCodesPage() {
   const executeSend = async (promo) => {
     setSendingPromoId(promo.id);
     try {
-      const res = await fetch('/api/admin/promos/send', {
+      const res = await fetchWithAuth('/api/admin/promos/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(promo)

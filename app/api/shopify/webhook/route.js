@@ -15,10 +15,16 @@ export async function POST(req) {
     const rawBody = await req.text();
     const hmacHeader = req.headers.get('X-Shopify-Hmac-Sha256');
 
-    // Optionnel: Vérification de signature Shopify
-    // const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-    // const hash = crypto.createHmac('sha256', secret).update(rawBody, 'utf8', 'hex').digest('base64');
-    // if (hash !== hmacHeader) return new NextResponse('Unauthorized', { status: 401 });
+    // Vérification de signature Shopify OBLIGATOIRE (Red Team Security)
+    const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+    if (!secret || !hmacHeader) {
+      return new NextResponse('Unauthorized: Missing signature or secret', { status: 401 });
+    }
+    const hash = crypto.createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64');
+    if (hash !== hmacHeader) {
+      console.error('[SECURITY] Invalid Shopify Webhook signature in Wingclass!');
+      return new NextResponse('Unauthorized: Invalid Signature', { status: 401 });
+    }
 
     const order = JSON.parse(rawBody);
     console.log(`[Webhook Shopify] Nouvelle commande payée: ${order.id}`);
