@@ -10,10 +10,10 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('courses');
   
   // Auth state
-  const [usersByRole, setUsersByRole] = useState({ admin: [], instructor: [], partenaire: [] });
+  const [usersByRole, setUsersByRole] = useState({ admin: [], instructor: [], partner: [] });
   const [loading, setLoading] = useState(true);
-  const [inviteEmails, setInviteEmails] = useState({ admin: '', instructor: '', partenaire: '' });
-  const [inviting, setInviting] = useState({ admin: false, instructor: false, partenaire: false });
+  const [inviteEmails, setInviteEmails] = useState({ admin: '', instructor: '', partner: '' });
+  const [inviting, setInviting] = useState({ admin: false, instructor: false, partner: false });
 
   // Course Types state
   const [showCourseModal, setShowCourseModal] = useState(false);
@@ -42,7 +42,7 @@ export default function SettingsPage() {
     setUsersByRole({
       admin: all.filter(u => !u.role || u.role === 'admin'),
       instructor: all.filter(u => u.role === 'instructor'),
-      partenaire: all.filter(u => u.role === 'partenaire'),
+      partner: all.filter(u => u.role === 'partner'),
     });
     setLoading(false);
   };
@@ -210,7 +210,7 @@ export default function SettingsPage() {
           {[
             { role: 'admin', label: 'Administrateurs', badge: 'Admin', badgeColor: 'bg-orange-100 text-orange-700', description: 'Accès complet au dashboard.' },
             { role: 'instructor', label: 'Professeurs', badge: 'Prof', badgeColor: 'bg-blue-100 text-blue-700', description: 'Accès au Planning Général uniquement.' },
-            { role: 'partenaire', label: 'Partenaires', badge: 'Partenaire', badgeColor: 'bg-green-100 text-green-700', description: 'Accès au Tableau des Licences uniquement.' },
+            { role: 'partner', label: 'Partenaires', badge: 'Partenaire', badgeColor: 'bg-green-100 text-green-700', description: 'Accès au Tableau des Licences uniquement.' },
           ].map(({ role, label, badge, badgeColor, description }) => (
             <div key={role} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center mb-4">
