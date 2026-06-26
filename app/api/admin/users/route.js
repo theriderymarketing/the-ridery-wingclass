@@ -77,14 +77,26 @@ export async function GET(req) {
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const supabaseAdmin = getSupabaseAdmin();
-    const { data: profiles, error } = await supabaseAdmin
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-      
-    if (error) throw error;
-    
-    return NextResponse.json(profiles);
+
+    const [{ data: profiles, error: profilesError }, { data: { users: authUsers }, error: authError }] = await Promise.all([
+      supabaseAdmin.from('profiles').select('*'),
+      supabaseAdmin.auth.admin.listUsers()
+    ]);
+
+    if (profilesError) throw profilesError;
+    if (authError) throw authError;
+
+    const profileIds = new Set((profiles || []).map(p => p.id));
+    const orphans = (authUsers || [])
+      .filter(u => !profileIds.has(u.id))
+      .map(u => ({ id: u.id, email: u.email, role: u.user_metadata?.role || 'admin', created_at: u.created_at, orphan: true }));
+
+    const all = [...(profiles || []).map(p => {
+      const u = authUsers.find(u => u.id === p.id);
+      return { ...p, email: u?.email || p.email };
+    }), ...orphans].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    return NextResponse.json(all);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
