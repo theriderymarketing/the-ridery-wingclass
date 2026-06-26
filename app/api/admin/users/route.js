@@ -17,16 +17,17 @@ export async function POST(req) {
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const supabaseAdmin = getSupabaseAdmin();
-    const { email, role } = await req.json();
+    const { email, password, role } = await req.json();
 
-    if (!email || !role) {
-      return NextResponse.json({ error: 'Email et rôle requis' }, { status: 400 });
+    if (!email || !password || !role) {
+      return NextResponse.json({ error: 'Email, mot de passe et rôle requis' }, { status: 400 });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://the-ridery-wingclass.vercel.app';
-    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      data: { role },
-      redirectTo: `${siteUrl}/admin`
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { role }
     });
 
     if (authError) throw authError;

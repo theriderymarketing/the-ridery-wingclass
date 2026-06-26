@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const [usersByRole, setUsersByRole] = useState({ admin: [], instructor: [], partner: [] });
   const [loading, setLoading] = useState(true);
   const [inviteEmails, setInviteEmails] = useState({ admin: '', instructor: '', partner: '' });
+  const [invitePasswords, setInvitePasswords] = useState({ admin: '', instructor: '', partner: '' });
   const [inviting, setInviting] = useState({ admin: false, instructor: false, partner: false });
 
   // Course Types state
@@ -49,20 +50,22 @@ export default function SettingsPage() {
 
   const handleInvite = async (role) => {
     const email = inviteEmails[role];
-    if (!email) return;
+    const password = invitePasswords[role];
+    if (!email || !password) return;
     setInviting(prev => ({ ...prev, [role]: true }));
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ email, role })
+        body: JSON.stringify({ email, password, role })
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setInviteEmails(prev => ({ ...prev, [role]: '' }));
+      setInvitePasswords(prev => ({ ...prev, [role]: '' }));
       await fetchAdmins();
-      alert(`Invitation envoyée à ${email}`);
+      alert(`Compte créé pour ${email}`);
     } catch (err) {
       alert(`Erreur : ${err.message}`);
     } finally {
@@ -238,7 +241,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 h-max">
-                  <h3 className="font-bold text-gray-900 mb-2 text-sm">Inviter un {label.slice(0, -1).toLowerCase()}</h3>
+                  <h3 className="font-bold text-gray-900 mb-2 text-sm">Créer un compte {label.slice(0, -1).toLowerCase()}</h3>
                   <input
                     type="email"
                     placeholder="adresse@email.com"
@@ -246,12 +249,19 @@ export default function SettingsPage() {
                     onChange={e => setInviteEmails(prev => ({ ...prev, [role]: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 text-sm"
                   />
+                  <input
+                    type="password"
+                    placeholder="Mot de passe"
+                    value={invitePasswords[role]}
+                    onChange={e => setInvitePasswords(prev => ({ ...prev, [role]: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 text-sm"
+                  />
                   <button
                     onClick={() => handleInvite(role)}
-                    disabled={inviting[role] || !inviteEmails[role]}
+                    disabled={inviting[role] || !inviteEmails[role] || !invitePasswords[role]}
                     className="w-full bg-gray-900 text-white font-medium py-2 rounded-lg text-sm disabled:opacity-50"
                   >
-                    {inviting[role] ? 'Envoi...' : 'Envoyer l\'invitation'}
+                    {inviting[role] ? 'Création...' : 'Créer le compte'}
                   </button>
                 </div>
               </div>
