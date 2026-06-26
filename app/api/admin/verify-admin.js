@@ -20,8 +20,9 @@ export async function verifyRole(request, allowedRoles = ['admin']) {
     .single();
 
   if (!profile) {
-    await supabaseAdmin.from('profiles').insert([{ id: user.id, role: 'admin' }]);
-    profile = { role: 'admin' };
+    const seedRole = user.user_metadata?.role || 'admin';
+    await supabaseAdmin.from('profiles').insert([{ id: user.id, role: seedRole }]);
+    profile = { role: seedRole };
   }
 
   const role = profile.role;
