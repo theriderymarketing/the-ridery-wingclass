@@ -13,13 +13,18 @@ export async function verifyRole(request, allowedRoles = ['admin']) {
     return { error: 'Unauthorized: Invalid token', status: 401 };
   }
 
-  const { data: profile } = await supabaseAdmin
+  let { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single();
 
-  const role = profile?.role || 'admin';
+  if (!profile) {
+    await supabaseAdmin.from('profiles').insert([{ id: user.id, role: 'admin' }]);
+    profile = { role: 'admin' };
+  }
+
+  const role = profile.role;
   if (!allowedRoles.includes(role)) {
     return { error: 'Forbidden: Insufficient role', status: 403 };
   }
