@@ -38,14 +38,23 @@ export default function SettingsPage() {
   }, [settings]);
 
   const fetchAdmins = async () => {
-    const { data } = await supabase.from('profiles').select('*');
-    const all = Array.isArray(data) ? data : [];
-    setUsersByRole({
-      admin: all.filter(u => !u.role || u.role === 'admin'),
-      instructor: all.filter(u => u.role === 'instructor'),
-      partner: all.filter(u => u.role === 'partner'),
-    });
-    setLoading(false);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      const all = await res.json();
+      const list = Array.isArray(all) ? all : [];
+      setUsersByRole({
+        admin: list.filter(u => !u.role || u.role === 'admin'),
+        instructor: list.filter(u => u.role === 'instructor'),
+        partner: list.filter(u => u.role === 'partner'),
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDeleteUser = async (userId) => {
