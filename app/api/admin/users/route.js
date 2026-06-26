@@ -52,6 +52,25 @@ export async function POST(req) {
   }
 }
 
+export async function DELETE(req) {
+  try {
+    const auth = await verifyAdmin(req);
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const url = new URL(req.url);
+    const userId = url.searchParams.get('id');
+    if (!userId) return NextResponse.json({ error: 'id requis' }, { status: 400 });
+
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+}
+
 export async function GET(req) {
   try {
     const auth = await verifyAdmin(req);

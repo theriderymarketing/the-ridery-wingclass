@@ -48,6 +48,22 @@ export default function SettingsPage() {
     setLoading(false);
   };
 
+  const handleDeleteUser = async (userId) => {
+    if (!confirm('Supprimer ce compte ?')) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/admin/users?id=${userId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session.access_token}` }
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      await fetchAdmins();
+    } catch (err) {
+      alert(`Erreur : ${err.message}`);
+    }
+  };
+
   const handleInvite = async (role) => {
     const email = inviteEmails[role];
     const password = invitePasswords[role];
@@ -225,14 +241,19 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-500 mb-3">{description}</p>
                   <div className="space-y-2">
                     {usersByRole[role].map(u => (
-                      <div key={u.id} className="flex items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
-                        <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3">
-                          <User className="w-4 h-4" />
+                      <div key={u.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="flex items-center">
+                          <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mr-3">
+                            <User className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 text-sm">{u.email || u.first_name}</p>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeColor}`}>{badge}</span>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-gray-900 text-sm">{u.email || u.first_name}</p>
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badgeColor}`}>{badge}</span>
-                        </div>
+                        <button onClick={() => handleDeleteUser(u.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     ))}
                     {usersByRole[role].length === 0 && (
