@@ -4,7 +4,7 @@ import { createShopifyDiscount, deleteShopifyDiscount } from '../../../../lib/sh
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin.from('promo_codes').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabaseAdmin.from('promo_codes').select('*').eq('type', 'cours').order('created_at', { ascending: false });
     if (error) throw error;
     return NextResponse.json(data);
   } catch (err) {
