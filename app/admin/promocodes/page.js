@@ -17,6 +17,7 @@ export default function PromoCodesPage() {
   const [discountValue, setDiscountValue] = useState('');
   const [targetEmail, setTargetEmail] = useState('');
   const [maxUses, setMaxUses] = useState('');
+  const [applicationType, setApplicationType] = useState('cours');
 
   const fetchPromos = async () => {
     setLoading(true);
@@ -45,7 +46,8 @@ export default function PromoCodesPage() {
       discount_value: parseFloat(discountValue),
       target_email: targetEmail.trim() || null,
       max_uses: maxUses ? parseInt(maxUses, 10) : null,
-      is_active: true
+      is_active: true,
+      type: applicationType
     };
 
     try {
@@ -63,6 +65,7 @@ export default function PromoCodesPage() {
         setDiscountValue('');
         setTargetEmail('');
         setMaxUses('');
+        setApplicationType('cours');
         fetchPromos();
       }
     } catch (err) {
@@ -210,6 +213,7 @@ export default function PromoCodesPage() {
                 <thead>
                   <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
                     <th className="px-6 py-3 font-medium">Code</th>
+                    <th className="px-6 py-3 font-medium">Application</th>
                     <th className="px-6 py-3 font-medium">Valeur</th>
                     <th className="px-6 py-3 font-medium">Email ciblé</th>
                     <th className="px-6 py-3 font-medium">Utilisations</th>
@@ -224,6 +228,11 @@ export default function PromoCodesPage() {
                   }).map(p => (
                     <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-4 font-bold text-orange-600">{p.code}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${p.type === 'location' ? 'bg-blue-50 text-blue-700' : 'bg-orange-50 text-orange-700'}`}>
+                          {p.type === 'location' ? 'Location' : 'Cours'}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-700">{p.discount_type === 'percentage' ? `${p.discount_value}%` : `${p.discount_value} €`}</td>
                       <td className="px-6 py-4 text-sm">{p.target_email || <span className="text-gray-400">Tous</span>}</td>
                       <td className="px-6 py-4 text-sm text-gray-700">{p.used_count} / {p.max_uses ? p.max_uses : '∞'}</td>
@@ -277,6 +286,17 @@ export default function PromoCodesPage() {
             </h2>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Applicable à</label>
+              <select
+                value={applicationType}
+                onChange={e => setApplicationType(e.target.value)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+              >
+                <option value="cours">Cours Wing</option>
+                <option value="location">Location Matériel</option>
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Code Promo</label>
               <input

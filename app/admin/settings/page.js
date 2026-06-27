@@ -37,11 +37,20 @@ export default function SettingsPage() {
     }
   }, [settings]);
 
+  const getAuthToken = async () => {
+    // Force refresh to handle expired tokens in iframe contexts
+    const { data: { session: fresh } } = await supabase.auth.refreshSession();
+    if (fresh?.access_token) return fresh.access_token;
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  };
+
   const fetchAdmins = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = await getAuthToken();
+      if (!token) { setLoading(false); return; }
       const res = await fetch('/api/admin/users', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       const all = await res.json();
       const list = Array.isArray(all) ? all : [];
@@ -60,10 +69,11 @@ export default function SettingsPage() {
   const handleDeleteUser = async (userId) => {
     if (!confirm('Supprimer ce compte ?')) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = await getAuthToken();
+      if (!token) throw new Error('Session expirée, reconnectez-vous');
       const res = await fetch(`/api/admin/users?id=${userId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -79,10 +89,11 @@ export default function SettingsPage() {
     if (!email || !password) return;
     setInviting(prev => ({ ...prev, [role]: true }));
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const token = await getAuthToken();
+      if (!token) throw new Error('Session expirée, reconnectez-vous sur the-ridery-wingclass.vercel.app/login');
       const res = await fetch('/api/admin/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ email, password, role })
       });
       const json = await res.json();

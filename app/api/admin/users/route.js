@@ -37,14 +37,6 @@ export async function POST(req) {
     ]);
     if (profileError) throw profileError;
 
-    if (role === 'instructor') {
-      const namePart = email.split('@')[0];
-      const { error: instError } = await supabaseAdmin.from('instructors').insert([
-        { user_id: authData.user.id, email, first_name: namePart, last_name: '' }
-      ]);
-      if (instError) throw instError;
-    }
-
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Erreur API Users:", error);

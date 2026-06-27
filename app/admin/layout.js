@@ -9,6 +9,7 @@ export default function AdminLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const [userRole, setUserRole] = useState('admin');
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -46,15 +47,21 @@ export default function AdminLayout({ children }) {
 
   return (
     <div className="flex min-h-screen bg-[#F3F4F6]">
+      {/* Mobile overlay */}
+      {mobileOpen && <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={() => setMobileOpen(false)} />}
+
       {/* Sidebar */}
-      <aside className="w-64 bg-white text-gray-900 flex flex-col hidden md:flex fixed h-full z-20 border-r border-gray-200">
-        <div className="p-8 border-b border-gray-100 flex items-center justify-center">
+      <aside className={`w-64 bg-white text-gray-900 flex-col fixed h-full z-50 border-r border-gray-200 ${mobileOpen ? 'flex' : 'hidden'} md:flex`}>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <img src="/logo.png" alt="The Ridery Logo" className="h-10 object-contain" />
+          <button onClick={() => setMobileOpen(false)} className="md:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
         </div>
         
         <div className="px-6 py-4">
           <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Administration</p>
-          <nav className="space-y-1.5">
+          <nav className="space-y-1.5" onClick={() => setMobileOpen(false)}>
             {(userRole === 'admin' || userRole === 'instructor') && (
               <Link href="/admin" className={getLinkClass("/admin")}>
                 <svg className={getIconClass("/admin")} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
@@ -104,6 +111,13 @@ export default function AdminLayout({ children }) {
 
       {/* Main Content */}
       <main className="flex-1 md:ml-64 relative min-w-0 bg-[#F3F4F6]">
+        {/* Mobile top bar */}
+        <div className="md:hidden sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+          <button onClick={() => setMobileOpen(v => !v)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <img src="/logo.png" alt="The Ridery" className="h-7 object-contain" />
+        </div>
         {children}
       </main>
     </div>

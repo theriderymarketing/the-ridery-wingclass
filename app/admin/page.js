@@ -6,10 +6,12 @@ import { format, addDays, startOfWeek, subWeeks, addWeeks } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useStore } from '@/lib/store';
 import { fetchWithAuth } from '@/lib/auth-utils';
+import { supabaseProxy as supabase } from '@/lib/supabase-proxy';
 
 export default function AdminCalendar() {
   const { fetchData, isLoaded, sessions, courseTypes, instructors, sessionParticipants, customers } = useStore();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [userRole, setUserRole] = useState('admin');
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [showEmptySessions, setShowEmptySessions] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState(null);
@@ -42,6 +44,12 @@ export default function AdminCalendar() {
       fetchData();
     }
   }, [isLoaded, fetchData]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.user_metadata?.role) setUserRole(session.user.user_metadata.role);
+    });
+  }, []);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -205,63 +213,65 @@ export default function AdminCalendar() {
   };
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col relative">
-      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/60 px-8 py-6 sticky top-0 z-30 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+      <header className="bg-white/80 backdrop-blur-xl border-b border-gray-200/60 px-4 md:px-8 py-4 md:py-6 sticky top-0 z-30 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Planning des Cours</h1>
-          <p className="text-gray-500 mt-1 font-medium">Gérez vos professeurs et vos créneaux en temps réel</p>
+          <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Planning des Cours</h1>
+          <p className="text-gray-500 mt-0.5 font-medium text-sm hidden md:block">Gérez vos professeurs et vos créneaux en temps réel</p>
         </div>
-        <div className="flex items-center gap-4">
-
+        <div className="flex flex-wrap items-center gap-2 md:gap-4 w-full md:w-auto">
           <div className="flex items-center gap-2">
-          <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
-            <button onClick={() => setCurrentDate(subWeeks(currentDate, 1))} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <div className="flex flex-col items-center min-w-[140px]">
-              <span className="text-sm font-bold text-gray-900 capitalize">
-                {format(currentDate, 'MMMM yyyy', { locale: fr })}
-              </span>
-              <input 
-                type="date"
-                value={format(currentDate, 'yyyy-MM-dd')}
-                onChange={(e) => {
-                  if(e.target.value) setCurrentDate(new Date(e.target.value));
-                }}
-                className="text-xs text-gray-500 bg-transparent border-none focus:ring-0 p-0 cursor-pointer outline-none w-auto text-center"
-              />
+            <div className="flex items-center gap-1 md:gap-3 bg-white px-2 md:px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
+              <button onClick={() => setCurrentDate(subWeeks(currentDate, 1))} className="p-1 md:p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
+                <ChevronLeft className="w-4 h-4 md:w-5 md:h-5" />
+              </button>
+              <div className="flex flex-col items-center min-w-[100px] md:min-w-[140px]">
+                <span className="text-xs md:text-sm font-bold text-gray-900 capitalize">
+                  {format(currentDate, 'MMMM yyyy', { locale: fr })}
+                </span>
+                <input
+                  type="date"
+                  value={format(currentDate, 'yyyy-MM-dd')}
+                  onChange={(e) => {
+                    if(e.target.value) setCurrentDate(new Date(e.target.value));
+                  }}
+                  className="text-xs text-gray-500 bg-transparent border-none focus:ring-0 p-0 cursor-pointer outline-none w-auto text-center"
+                />
+              </div>
+              <button onClick={() => setCurrentDate(addWeeks(currentDate, 1))} className="p-1 md:p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
+                <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
+              </button>
             </div>
-            <button onClick={() => setCurrentDate(addWeeks(currentDate, 1))} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
-              <ChevronRight className="w-5 h-5" />
+            <button onClick={() => setCurrentDate(new Date())} className="px-3 md:px-4 py-2 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 text-gray-700 font-semibold text-xs md:text-sm transition-all shadow-sm whitespace-nowrap">
+              Aujourd'hui
             </button>
           </div>
-          <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 bg-gray-100 border border-gray-200 rounded-xl hover:bg-gray-200 text-gray-700 font-semibold text-sm transition-all shadow-sm">
-            Aujourd'hui
-          </button>
-          </div>
-          <button onClick={() => setIsSessionModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5">
-            <Plus className="w-5 h-5" />
-            Nouveau Créneau
-          </button>
+          {userRole === 'admin' && (
+            <button onClick={() => setIsSessionModalOpen(true)} className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-4 md:px-6 py-2 md:py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-0.5 whitespace-nowrap text-sm md:text-base">
+              <Plus className="w-4 h-4 md:w-5 md:h-5" />
+              <span className="hidden sm:inline">Nouveau </span>Créneau
+            </button>
+          )}
         </div>
       </header>
 
       <div className="flex-1 overflow-auto p-4 md:p-8">
         <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-200/60 overflow-hidden relative">
           <div className="grid grid-cols-8 border-b border-gray-100 bg-white sticky top-0 z-20">
-            <div className="p-4 flex items-center justify-center border-r border-gray-50">
-              <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100">
-                <CalendarIcon className="w-5 h-5 text-gray-400" />
+            <div className="p-1 md:p-4 flex items-center justify-center border-r border-gray-50">
+              <div className="w-7 h-7 md:w-10 md:h-10 rounded-full bg-gray-50 flex items-center justify-center border border-gray-100">
+                <CalendarIcon className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
               </div>
             </div>
             {days.map((day, i) => {
               const isToday = format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
               return (
-                <div key={i} className={`p-4 text-center border-r border-gray-50 last:border-0 relative ${isToday ? 'bg-orange-50/10' : ''}`}>
+                <div key={i} className={`p-1 md:p-4 text-center border-r border-gray-50 last:border-0 relative ${isToday ? 'bg-orange-50/10' : ''}`}>
                   {isToday && <div className="absolute top-0 left-0 w-full h-1 bg-orange-500"></div>}
                   <div className={`text-xs font-bold uppercase tracking-widest ${isToday ? 'text-orange-500' : 'text-gray-400'}`}>
-                    {format(day, 'EEEE', { locale: fr })}
+                    <span className="hidden md:inline">{format(day, 'EEEE', { locale: fr })}</span>
+                    <span className="md:hidden">{format(day, 'EEEEE', { locale: fr })}</span>
                   </div>
-                  <div className={`text-2xl mt-1.5 font-extrabold flex items-center justify-center mx-auto w-10 h-10 rounded-full ${isToday ? 'bg-orange-500 text-white shadow-md shadow-orange-500/40' : 'text-gray-900'}`}>
+                  <div className={`text-base md:text-2xl mt-1 md:mt-1.5 font-extrabold flex items-center justify-center mx-auto w-7 h-7 md:w-10 md:h-10 rounded-full ${isToday ? 'bg-orange-500 text-white shadow-md shadow-orange-500/40' : 'text-gray-900'}`}>
                     {format(day, 'd')}
                   </div>
                 </div>
