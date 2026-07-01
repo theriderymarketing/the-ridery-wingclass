@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Plus, Mail, Key, User, Trash2, CalendarOff, Save, X, Edit2, List, Settings } from 'lucide-react';
+import { Shield, Plus, Mail, Key, User, Trash2, CalendarOff, Save, X, Edit2, List, Settings, Calendar, ExternalLink } from 'lucide-react';
+import { format, addDays, eachDayOfInterval, getDay, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { supabaseProxy as supabase } from '../../../lib/supabase-proxy';
 import { useStore } from '../../../lib/store';
 
@@ -19,7 +21,88 @@ export default function SettingsPage() {
   // Course Types state
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [editingCourse, setEditingCourse] = useState(null);
-  const [courseForm, setCourseForm] = useState({ name: '', duration_minutes: 120, capacity: 4, color: '#10B981' });
+  const [courseForm, setCourseForm] = useState({ name: '', duration_minutes: 120, capacity: 4, color: '#10B981', days_of_week: [] });
+
+  const parseDays = (course) => {
+    try { return JSON.parse(course.description || '{}').days || []; } catch { return []; }
+  };
+
+  const [genModal, setGenModal] = useState(null);
+  const [genForm, setGenForm] = useState({ start_date: '', end_date: '', avail_start: '09:00', avail_end: '19:00', duration_min: 120, days: [] });
+  const [genPreview, setGenPreview] = useState([]);
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState('');
+
+  const jsToInternal = (jsDay) => jsDay === 0 ? 6 : jsDay - 1;
+
+  const computeSlots = (availStart, availEnd, durationMin) => {
+    const [sh, sm] = availStart.split(':').map(Number);
+    const [eh, em] = availEnd.split(':').map(Number);
+    const startMins = sh * 60 + sm;
+    const endMins = eh * 60 + em;
+    const slots = [];
+    for (let t = startMins; t + durationMin <= endMins; t += durationMin) {
+      const hh = String(Math.floor(t / 60)).padStart(2, '0');
+      const mm = String(t % 60).padStart(2, '0');
+      const eh2 = Math.floor((t + durationMin) / 60);
+      const em2 = (t + durationMin) % 60;
+      slots.push({ start: `${hh}:${mm}`, end: `${String(eh2).padStart(2,'0')}:${String(em2).padStart(2,'0')}` });
+    }
+    return slots;
+  };
+
+  const computeGenPreview = (form) => {
+    if (!form.start_date || !form.end_date || form.days.length === 0) return [];
+    const days = eachDayOfInterval({ start: parseISO(form.start_date), end: parseISO(form.end_date) })
+      .filter(d => form.days.includes(jsToInternal(getDay(d))));
+    const slots = computeSlots(form.avail_start, form.avail_end, form.duration_min);
+    return days.flatMap(day => slots.map(slot => ({ day, ...slot })));
+  };
+
+  const updateGenForm = (patch) => {
+    setGenForm(prev => {
+      const next = { ...prev, ...patch };
+      setGenPreview(computeGenPreview(next));
+      return next;
+    });
+  };
+
+  const openGenModal = (course) => {
+    const days = parseDays(course);
+    const form = {
+      start_date: format(new Date(), 'yyyy-MM-dd'),
+      end_date: format(addDays(new Date(), 60), 'yyyy-MM-dd'),
+      avail_start: '09:00',
+      avail_end: '19:00',
+      duration_min: 120,
+      days,
+    };
+    setGenForm(form);
+    setGenPreview(computeGenPreview(form));
+    setGenError('');
+    setGenModal({ course });
+  };
+
+  const handleGenerate = async () => {
+    if (!genModal || genPreview.length === 0) return;
+    setGenLoading(true);
+    setGenError('');
+    try {
+      const sessions = genPreview.map(({ day, start, end }) => ({
+        course_type_id: genModal.course.id,
+        instructor_id: null,
+        start_time: new Date(`${format(day, 'yyyy-MM-dd')}T${start}:00`).toISOString(),
+        end_time: new Date(`${format(day, 'yyyy-MM-dd')}T${end}:00`).toISOString(),
+      }));
+      const { error: insertErr } = await supabase.from('sessions').insert(sessions);
+      if (insertErr) throw new Error(insertErr.message);
+      setGenModal(null);
+    } catch (err) {
+      setGenError(err.message);
+    } finally {
+      setGenLoading(false);
+    }
+  };
 
   // Exceptions state
   const [exceptions, setExceptions] = useState([]);
@@ -110,10 +193,13 @@ export default function SettingsPage() {
   };
 
   const saveCourse = async () => {
+    const { days_of_week, ...rest } = courseForm;
+    const description = days_of_week && days_of_week.length > 0 ? JSON.stringify({ days: days_of_week }) : null;
+    const courseData = { ...rest, description };
     if (editingCourse) {
-      await updateCourseType({ ...courseForm, id: editingCourse.id });
+      await updateCourseType({ ...courseData, id: editingCourse.id });
     } else {
-      await addCourseType(courseForm);
+      await addCourseType(courseData);
     }
     setShowCourseModal(false);
   };
@@ -158,20 +244,13 @@ export default function SettingsPage() {
           <Shield className="w-4 h-4 mr-2" />
           Accès & Comptes
         </button>
-        <button 
-          onClick={() => setActiveTab('integration')}
-          className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'integration' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          <Settings className="w-4 h-4 mr-2" />
-          Intégration Shopify
-        </button>
       </div>
 
       {activeTab === 'courses' && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <div className="flex flex-wrap gap-3 justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-900">Catalogue des cours</h2>
-            <button onClick={() => { setEditingCourse(null); setCourseForm({ name: '', duration_minutes: 120, capacity: 4, color: '#10B981' }); setShowCourseModal(true); }} className="bg-gray-900 text-white px-4 py-2 rounded-lg flex items-center text-sm font-medium hover:bg-black transition-colors whitespace-nowrap">
+            <button onClick={() => { setEditingCourse(null); setCourseForm({ name: '', duration_minutes: 120, capacity: 4, color: '#10B981', days_of_week: [] }); setShowCourseModal(true); }} className="bg-gray-900 text-white px-4 py-2 rounded-lg flex items-center text-sm font-medium hover:bg-black transition-colors whitespace-nowrap">
               <Plus className="w-4 h-4 mr-2" />
               Nouveau type de cours
             </button>
@@ -185,10 +264,21 @@ export default function SettingsPage() {
                   <div>
                     <p className="font-bold text-gray-900">{course.name}</p>
                     <p className="text-sm text-gray-500">{course.duration_minutes} min • Jusqu'à {course.capacity} élèves</p>
+                    {parseDays(course).length > 0 && (
+                      <div className="flex gap-1 mt-1">
+                        {['L','M','Me','J','V','S','D'].map((d, i) => parseDays(course).includes(i) ? (
+                          <span key={i} className="text-xs px-1.5 py-0.5 rounded bg-gray-900 text-white font-bold">{d}</span>
+                        ) : null)}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setEditingCourse(course); setCourseForm(course); setShowCourseModal(true); }} className="p-2 text-gray-400 hover:text-orange-600 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
+                  <button onClick={() => window.open(`https://the-ridery-wingclass.vercel.app/widget/${course.id}`, '_blank')} className="px-3 py-1.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-green-50 hover:text-green-700 border border-gray-200 rounded-lg transition-colors flex items-center gap-1">
+                    <ExternalLink className="w-3 h-3" /> Vue client
+                  </button>
+                  <button title="Générer des sessions" onClick={() => openGenModal(course)} className="p-2 text-gray-400 hover:text-blue-600 rounded-lg transition-colors"><Calendar className="w-4 h-4" /></button>
+                  <button onClick={() => { setEditingCourse(course); setCourseForm({ ...course, days_of_week: parseDays(course) }); setShowCourseModal(true); }} className="p-2 text-gray-400 hover:text-orange-600 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
                   <button onClick={() => deleteCourseType(course.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
@@ -311,55 +401,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {activeTab === 'integration' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center mb-6">
-            <Settings className="w-6 h-6 text-orange-500 mr-3" />
-            <h2 className="text-xl font-bold text-gray-900">Intégration Shopify</h2>
-          </div>
-          
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 mb-8">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Comment intégrer le widget de réservation ?</h3>
-            <p className="text-gray-600 mb-4">
-              Pour permettre à vos clients de réserver leurs cours de wingfoil directement depuis votre boutique Shopify, vous devez copier le code ci-dessous et le coller dans une page de votre boutique.
-            </p>
-            <ol className="list-decimal list-inside space-y-2 text-gray-700 mb-6 font-medium">
-              <li>Connectez-vous à votre interface d'administration Shopify.</li>
-              <li>Allez dans <strong>Boutique en ligne {'>'} Pages</strong>.</li>
-              <li>Créez une nouvelle page (ex: "Réserver un cours") ou modifiez-en une existante.</li>
-              <li>Cliquez sur le bouton <strong>&lt;&gt; (Afficher le code HTML)</strong> dans l'éditeur de texte.</li>
-              <li>Collez le code ci-dessous, puis enregistrez la page.</li>
-            </ol>
-          </div>
-
-          <div>
-            <h3 className="font-bold text-gray-900 mb-3">Code HTML à copier :</h3>
-            <div className="relative">
-              <pre className="bg-gray-900 text-gray-100 p-4 rounded-xl overflow-x-auto text-sm font-mono whitespace-pre-wrap">
-{`<div style="width: 100%; height: 800px; max-width: 1200px; margin: 0 auto; overflow: hidden; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
-  <iframe 
-    src="https://the-ridery-wingclass.vercel.app/widget" 
-    width="100%" 
-    height="100%" 
-    frameborder="0" 
-    style="border: none;"
-    title="Réservation Cours Wingfoil"
-  ></iframe>
-</div>`}
-              </pre>
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(`<div style="width: 100%; height: 800px; max-width: 1200px; margin: 0 auto; overflow: hidden; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">\n  <iframe \n    src="https://the-ridery-wingclass.vercel.app/widget" \n    width="100%" \n    height="100%" \n    frameborder="0" \n    style="border: none;"\n    title="Réservation Cours Wingfoil"\n  ></iframe>\n</div>`);
-                  alert('Code copié dans le presse-papier !');
-                }}
-                className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-              >
-                Copier le code
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Course Modal */}
       {showCourseModal && (
@@ -376,6 +417,26 @@ export default function SettingsPage() {
                 <div><label className="block text-sm font-medium mb-1">Places max</label><input type="number" value={courseForm.capacity} onChange={e => setCourseForm({...courseForm, capacity: Number(e.target.value)})} className="w-full p-2 border rounded-lg" /></div>
               </div>
               <div><label className="block text-sm font-medium mb-1">Couleur</label><input type="color" value={courseForm.color} onChange={e => setCourseForm({...courseForm, color: e.target.value})} className="w-full h-10 p-1 border rounded-lg cursor-pointer" /></div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Jours du cours</label>
+                <div className="flex gap-1">
+                  {['L','M','Me','J','V','S','D'].map((label, i) => {
+                    const active = (courseForm.days_of_week || []).includes(i);
+                    return (
+                      <button
+                        key={i} type="button"
+                        onClick={() => {
+                          const days = courseForm.days_of_week || [];
+                          setCourseForm({ ...courseForm, days_of_week: active ? days.filter(d => d !== i) : [...days, i] });
+                        }}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all border ${active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-500'}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
               <button onClick={() => setShowCourseModal(false)} className="px-4 py-2 text-gray-600 font-medium">Annuler</button>
@@ -438,6 +499,114 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      {/* MODAL GÉNÉRATION SESSIONS */}
+      {genModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Générer des sessions</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{genModal.course.name}</p>
+              </div>
+              <button onClick={() => setGenModal(null)} className="text-gray-400 hover:text-gray-900"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Plage de dates */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date début *</label>
+                  <input type="date" value={genForm.start_date}
+                    onChange={e => updateGenForm({ start_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date fin *</label>
+                  <input type="date" value={genForm.end_date}
+                    onChange={e => updateGenForm({ end_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Disponibilité + durée */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Dispo début</label>
+                  <input type="time" value={genForm.avail_start}
+                    onChange={e => updateGenForm({ avail_start: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Dispo fin</label>
+                  <input type="time" value={genForm.avail_end}
+                    onChange={e => updateGenForm({ avail_end: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Durée (min)</label>
+                  <input type="number" value={genForm.duration_min} min="30" step="30"
+                    onChange={e => updateGenForm({ duration_min: parseInt(e.target.value) || 120 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Jours de la semaine */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Jours *</label>
+                <div className="flex gap-1">
+                  {['L','M','Me','J','V','S','D'].map((label, i) => {
+                    const active = genForm.days.includes(i);
+                    return (
+                      <button key={i} type="button"
+                        onClick={() => updateGenForm({ days: active ? genForm.days.filter(d => d !== i) : [...genForm.days, i] })}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold border transition-all ${active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-400 border-gray-200 hover:border-gray-500'}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Prévisualisation */}
+              {genPreview.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <p className="text-sm font-bold text-green-800 mb-2">{genPreview.length} session{genPreview.length > 1 ? 's' : ''} à créer :</p>
+                  <div className="max-h-36 overflow-y-auto space-y-1">
+                    {genPreview.slice(0, 20).map((s, idx) => (
+                      <p key={idx} className="text-xs text-green-700 capitalize">
+                        {format(s.day, 'EEEE d MMM', { locale: fr })} — {s.start} → {s.end}
+                      </p>
+                    ))}
+                    {genPreview.length > 20 && <p className="text-xs text-green-600 font-medium">+ {genPreview.length - 20} autres...</p>}
+                  </div>
+                </div>
+              )}
+              {genError && <p className="text-sm text-red-600 font-medium">{genError}</p>}
+              {genForm.days.length > 0 && genPreview.length === 0 && (
+                <p className="text-sm text-gray-400 text-center">Aucun jour correspondant dans cette plage.</p>
+              )}
+            </div>
+
+            <div className="p-5 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+              <button onClick={() => setGenModal(null)} className="px-4 py-2 text-gray-600 font-medium">Annuler</button>
+              <button
+                onClick={handleGenerate}
+                disabled={genLoading || genPreview.length === 0}
+                className="px-6 py-2.5 bg-gray-900 hover:bg-black text-white font-bold rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {genLoading ? 'Création en cours...' : `Créer ${genPreview.length} créneau${genPreview.length > 1 ? 'x' : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
