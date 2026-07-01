@@ -4,12 +4,14 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { supabaseProxy as supabase } from '../../lib/supabase-proxy';
+import PushNotificationButton from '../../components/PushNotificationButton';
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const [userRole, setUserRole] = useState('admin');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [instructorId, setInstructorId] = useState(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -20,6 +22,11 @@ export default function AdminLayout({ children }) {
       }
       const role = session.user?.user_metadata?.role || 'admin';
       setUserRole(role);
+      if (role === 'instructor') {
+        const { data: instr } = await supabase
+          .from('instructors').select('id').eq('user_id', session.user.id).single();
+        if (instr) setInstructorId(instr.id);
+      }
       if (role === 'instructor' && pathname !== '/admin') {
         router.replace('/admin');
       } else if (role === 'partner' && !pathname.startsWith('/admin/licences')) {
@@ -79,6 +86,10 @@ export default function AdminLayout({ children }) {
                 <svg className={getIconClass("/admin/instructors")} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                 Professeurs
               </Link>
+              <Link href="/admin/partners" className={getLinkClass("/admin/partners")}>
+                <svg className={getIconClass("/admin/partners")} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
+                Partenaires
+              </Link>
               <Link href="/admin/students" className={getLinkClass("/admin/students")}>
                 <svg className={getIconClass("/admin/students")} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
                 Base Élèves
@@ -96,9 +107,27 @@ export default function AdminLayout({ children }) {
         </div>
 
         {userRole === 'admin' && (
-          <div className="px-6 py-4 mt-auto">
+          <div className="px-6 py-4">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Système</p>
             <nav>
+              <PushNotificationButton />
+              {userRole === 'instructor' && instructorId && (
+                <a
+                  href={`/api/calendar/${instructorId}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigator.clipboard?.writeText(`${window.location.origin}/api/calendar/${instructorId}`);
+                    alert('Lien agenda copié ! Collez-le dans Google Calendar → "Autres agendas" → "Via URL"');
+                  }}
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-all w-full cursor-pointer"
+                  title="Ajouter mes cours à mon agenda téléphone"
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                  Sync Agenda
+                </a>
+              )}
               <Link href="/admin/settings" className={getLinkClass("/admin/settings")}>
                 <svg className={getIconClass("/admin/settings")} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 Paramètres & Accès
@@ -107,6 +136,11 @@ export default function AdminLayout({ children }) {
           </div>
         )}
         
+        <div className="mt-auto p-4 border-t border-gray-200">
+          <button onClick={async () => { await supabase.auth.signOut(); router.push('/login'); }} className="flex items-center justify-center w-full gap-2 px-4 py-2.5 text-sm font-bold text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors">
+            Déconnexion
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
